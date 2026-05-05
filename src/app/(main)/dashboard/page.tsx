@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -10,6 +11,7 @@ import {
 import {
   Truck, Fuel, TrendingUp, TrendingDown, DollarSign, Users,
   AlertCircle, BarChart3, Gauge, Building2, Calendar, Receipt,
+  Plus, ClipboardList, Banknote, Zap,
 } from 'lucide-react';
 import type { Trip, Driver } from '@/types';
 import {
@@ -48,6 +50,7 @@ const ThaiTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function DashboardPage() {
+  const router = useRouter();
   const supabase = createClient();
 
   const [drivers,     setDrivers]     = useState<Driver[]>([]);
@@ -279,6 +282,28 @@ export default function DashboardPage() {
       </div>
 
       {activeTab === 'overview' && <>
+
+      {/* ── Quick Actions ── */}
+      <div className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-2xl p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Zap className="w-4 h-4 text-yellow-400" />
+          <span className="text-white font-semibold text-sm">Quick Actions</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: '+ สร้างงานใหม่',     icon: ClipboardList, color: 'bg-blue-500 hover:bg-blue-400',    href: '/jobs' },
+            { label: '+ บันทึกเที่ยว',     icon: Truck,         color: 'bg-orange-500 hover:bg-orange-400', href: '/trips' },
+            { label: 'อนุมัติเบิกเงิน',    icon: Banknote,      color: 'bg-purple-500 hover:bg-purple-400', href: '/advances' },
+            { label: 'ตรวจน้ำมัน',        icon: Fuel,          color: 'bg-yellow-500 hover:bg-yellow-400', href: '/fuel' },
+          ].map(({ label, icon: Icon, color, href }) => (
+            <button key={label} onClick={() => router.push(href)}
+              className={`${color} text-white rounded-xl px-4 py-3 flex items-center gap-2 text-sm font-medium transition-colors`}>
+              <Icon className="w-4 h-4 flex-shrink-0" />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Live Job Status Row */}
       <div className="grid grid-cols-3 lg:grid-cols-6 gap-3">

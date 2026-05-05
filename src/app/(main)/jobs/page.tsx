@@ -1,11 +1,13 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import {
   ClipboardList, Plus, RefreshCw, Filter, ChevronRight,
   Truck, User, Building2, Package, Banknote, X, Check,
   Clock, Search, Edit2, Trash2, Calendar,
+  Sparkles, FileText,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 
@@ -422,8 +424,49 @@ function JobFormModal({ drivers, customers, job, onClose, onSaved }: {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [supabase] = useState(() => createClient());
+  const [showAiParser, setShowAiParser] = useState(false);
+  const [aiText, setAiText] = useState('');
+  const [aiParsing, setAiParsing] = useState(false);
+  const [routePriceSuggestion, setRoutePriceSuggestion] = useState<number | null>(null);
 
   const f = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
+
+  const lookupRoutePrice = async (origin: string, destination: string) => {
+    if (!origin || !destination) { setRoutePriceSuggestion(null); return; }
+    const { data } = await supabase.from('route_prices')
+      .select('agreed_price').is('deleted_at', null)
+      .ilike('origin', origin).ilike('destination', destination)
+      .order('created_at', { ascending: false }).limit(1).single();
+    setRoutePriceSuggestion(data ? data.agreed_price : null);
+  };
+
+  const runAiParser = async () => {
+    if (!aiText.trim()) return;
+    setAiParsing(true);
+    try {
+      const res = await fetch('/api/jobs/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: aiText }),
+      });
+      const { data } = await res.json();
+      if (data) {
+        setForm(p => ({
+          ...p,
+          origin: data.origin || p.origin,
+          destination: data.destination || p.destination,
+          product: data.product || p.product,
+          weight_kg: data.weight_kg || p.weight_kg,
+          selling_price: data.selling_price ? String(data.selling_price) : p.selling_price,
+          source: 'ai',
+        }));
+        setShowAiParser(false);
+        setAiText('');
+      }
+    } catch {}
+    setAiParsing(false);
+  };
 
   const handleSubmit = async () => {
     if (!form.origin || !form.destination || !form.selling_price) {
@@ -460,11 +503,20 @@ function JobFormModal({ drivers, customers, job, onClose, onSaved }: {
   };
 
   return (
+    <>
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white p-5 border-b border-slate-100 flex items-center justify-between z-10">
           <h2 className="text-lg font-bold text-slate-800">{isEdit ? 'แก้ไขงาน' : 'เพิ่มงานใหม่'}</h2>
-          <button onClick={onClose}><X className="w-5 h-5 text-slate-400" /></button>
+          <div className="flex items-center gap-2">
+            {!isEdit && (
+              <button onClick={() => setShowAiParser(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-50 text-violet-700 hover:bg-violet-100 rounded-lg text-xs font-medium transition-colors">
+                <Sparkles className="w-3.5 h-3.5" /> AI Parse
+              </button>
+            )}
+            <button onClick={onClose}><X className="w-5 h-5 text-slate-400" /></button>
+          </div>
         </div>
         <div className="p-5 space-y-4">
           {error && <div className="bg-red-50 text-red-700 text-sm p-3 rounded-lg">{error}</div>}
@@ -493,11 +545,11 @@ function JobFormModal({ drivers, customers, job, onClose, onSaved }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label-text">ต้นทาง *</label>
-              <input className="form-input" value={form.origin} onChange={e => f('origin', e.target.value)} placeholder="เช่น ลพบุรี" />
+              <input className="form-input" value={form.origin} onChange={e => { f('origin', e.target.value); lookupRoutePrice(e.target.value, form.destination); }} placeholder="เช่น ลพบุรี" />
             </div>
             <div>
               <label className="label-text">ปลายทาง *</label>
-              <input className="form-input" value={form.destination} onChange={e => f('destination', e.target.value)} placeholder="เช่น เชียงราย" />
+              <input className="form-input" value={form.destination} onChange={e => { f('destination', e.target.value); lookupRoutePrice(form.origin, e.target.value); }} placeholder="เช่น เชียงราย" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -513,6 +565,14 @@ function JobFormModal({ drivers, customers, job, onClose, onSaved }: {
           <div>
             <label className="label-text">ราคาค่าขนส่ง (บาท) *</label>
             <input type="number" className="form-input" value={form.selling_price} onChange={e => f('selling_price', e.target.value)} />
+                {routePriceSuggestion && (
+                  <button type="button"
+                    onClick={() => f('selling_price', String(routePriceSuggestion))}
+                    className="mt-1 text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" />
+                    ราคาตกลงเส้นทางนี้: {routePriceSuggestion.toLocaleString('th-TH')} บาท — คลิกเพื่อใช้
+                  </button>
+                )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -551,6 +611,43 @@ function JobFormModal({ drivers, customers, job, onClose, onSaved }: {
         </div>
       </div>
     </div>
+    {/* AI Parser Modal */}
+    {showAiParser && (
+      <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4"
+        onClick={() => setShowAiParser(false)}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg"
+          onClick={e => e.stopPropagation()}>
+          <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-violet-500" /> AI สร้างงานจากข้อความ
+            </h2>
+            <button onClick={() => setShowAiParser(false)}><X className="w-5 h-5 text-slate-400" /></button>
+          </div>
+          <div className="p-5 space-y-4">
+            <p className="text-sm text-slate-500">
+              วาง/พิมพ์ข้อความงานจาก LINE กลุ่ม หรือโทรศัพท์ แล้วกด &quot;วิเคราะห์&quot; ระบบจะดึง origin, destination, สินค้า, ราคา ให้อัตโนมัติ
+            </p>
+            <textarea
+              className="form-input w-full"
+              rows={6}
+              value={aiText}
+              onChange={e => setAiText(e.target.value)}
+              placeholder="ตัวอย่าง: รับงานด่วน! ข้าวโพด 20 ตัน จาก เชียงราย ไป นครสวรรค์ ราคา 18,000 บาท"
+            />
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setShowAiParser(false)} className="btn-secondary">ยกเลิก</button>
+              <button onClick={runAiParser} disabled={aiParsing || !aiText.trim()}
+                className="btn-primary flex items-center gap-1.5">
+                {aiParsing
+                  ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> กำลังวิเคราะห์...</>
+                  : <><Sparkles className="w-4 h-4" /> วิเคราะห์และสร้างงาน</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
   );
 }
 

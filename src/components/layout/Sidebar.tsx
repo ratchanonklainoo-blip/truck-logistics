@@ -8,7 +8,7 @@ import {
   Truck, LayoutDashboard, ClipboardList,
   Users, Fuel, MapPin, UserCheck,
   Bell, Settings, LogOut,
-  Wallet, ChevronRight,
+  Wallet, ChevronRight, Ship,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
@@ -28,13 +28,14 @@ const NAV_ITEMS = [
   { href: '/customers',  label: 'ลูกค้า',              icon: Users,           badge: null },
   { href: '/drivers',    label: 'คนขับ',               icon: UserCheck,       badge: null },
   { href: '/payroll',    label: 'เงินเดือนและค่ารอบ', icon: Wallet,          badge: null },
+  { href: '/import',     label: 'ชิปปิ้งนำเข้า',       icon: Ship,            badge: null },
   { href: '/alerts',     label: 'แจ้งเตือน',           icon: Bell,            badge: 'alerts'   as keyof Badges },
   { href: '/settings',   label: 'ตั้งค่าระบบ',         icon: Settings,        badge: null },
 ] as const;
 
 const PHASE_AVAILABLE = new Set([
   '/dashboard', '/trips', '/jobs', '/customers', '/drivers', '/settings',
-  '/fuel', '/advances', '/payroll', '/alerts',
+  '/fuel', '/advances', '/payroll', '/alerts', '/import',
 ]);
 
 interface SidebarProps { userEmail?: string; }

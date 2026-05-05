@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Settings, Save, RefreshCw, Plus, X, MessageCircle, CheckCircle2 } from 'lucide-react';
+import { Settings, Save, RefreshCw, Plus, X, MessageCircle, CheckCircle2, Clock, Send, ToggleLeft, ToggleRight } from 'lucide-react';
 import { COMPANY } from '@/lib/constants';
 
 export default function SettingsPage() {
@@ -17,6 +17,10 @@ export default function SettingsPage() {
   const [managerLineId,       setManagerLineId]       = useState('');
   const [lineIdSaved,         setLineIdSaved]         = useState(false);
   const [defaultAdvanceLimit, setDefaultAdvanceLimit] = useState('5000');
+  const [summaryEnabled, setSummaryEnabled] = useState(false);
+  const [summaryTime, setSummaryTime] = useState('21:00');
+  const [summaryLineId, setSummaryLineId] = useState('');
+  const [summarySending, setSummarySending] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -24,12 +28,16 @@ export default function SettingsPage() {
         .select('*').in('setting_key', [
           'product_categories', 'locations',
           'manager_line_user_id', 'default_advance_limit',
+          'daily_summary_enabled', 'daily_summary_time', 'daily_summary_line_id',
         ]);
       data?.forEach(row => {
         if (row.setting_key === 'product_categories')    setProducts(row.setting_value as string[]);
         if (row.setting_key === 'locations')             setLocations(row.setting_value as string[]);
         if (row.setting_key === 'manager_line_user_id')  setManagerLineId(row.setting_value as string || '');
         if (row.setting_key === 'default_advance_limit') setDefaultAdvanceLimit(String(row.setting_value || 5000));
+        if (row.setting_key === 'daily_summary_enabled') setSummaryEnabled(row.setting_value === true || row.setting_value === 'true');
+        if (row.setting_key === 'daily_summary_time') setSummaryTime(String(row.setting_value || '21:00'));
+        if (row.setting_key === 'daily_summary_line_id') setSummaryLineId(String(row.setting_value || ''));
       });
       setLoading(false);
     };
@@ -81,6 +89,14 @@ export default function SettingsPage() {
     const updated = locations.filter(x => x !== l);
     setLocations(updated);
     await save('locations', updated);
+  };
+
+  const sendTestSummary = async () => {
+    setSummarySending(true);
+    try {
+      await fetch('/api/line/daily-summary', { method: 'POST', headers: { 'x-internal-key': process.env.NEXT_PUBLIC_APP_URL || '' } });
+    } catch {}
+    setSummarySending(false);
   };
 
   if (loading) return (
@@ -226,6 +242,66 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+
+      {/* Daily LINE Summary */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+        <h2 className="font-semibold text-slate-700 mb-4 flex items-center gap-2">
+          <Clock className="w-5 h-5 text-violet-500" />
+          <span>สรุปประจำวัน (LINE)</span>
+        </h2>
+        <div className="space-y-4">
+          {/* Toggle */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-700">เปิดการส่งสรุปอัตโนมัติ</p>
+              <p className="text-xs text-slate-400 mt-0.5">ส่งสรุปงาน รายได้ และแจ้งเตือนให้ผู้จัดการทุกคืน</p>
+            </div>
+            <button
+              onClick={async () => {
+                const next = !summaryEnabled;
+                setSummaryEnabled(next);
+                await save('daily_summary_enabled', next ? 'true' : 'false');
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${summaryEnabled ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-500'}`}
+            >
+              {summaryEnabled ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
+              {summaryEnabled ? 'เปิดอยู่' : 'ปิดอยู่'}
+            </button>
+          </div>
+
+          {/* Time */}
+          <div className="flex items-center gap-3">
+            <div>
+              <label className="form-label">เวลาส่งสรุป</label>
+              <input type="time" className="form-input w-32" value={summaryTime}
+                onChange={e => setSummaryTime(e.target.value)} />
+            </div>
+            <button onClick={() => save('daily_summary_time', summaryTime)}
+              className="btn-secondary text-sm flex items-center gap-1.5 mt-5">
+              <Save className="w-4 h-4" /> บันทึก
+            </button>
+          </div>
+
+          {/* Preview */}
+          <div className="bg-slate-800 rounded-xl p-4 text-sm font-mono text-green-300 leading-relaxed">
+            <div className="text-slate-400 text-xs mb-2">ตัวอย่างข้อความที่จะส่ง:</div>
+            <div>📊 สรุปประจำวัน — {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'long' })}</div>
+            <div className="mt-1">🚛 งานวันนี้: 4 งาน · กำลังวิ่ง 2 คัน</div>
+            <div>💰 รายได้วันนี้: ฿48,000</div>
+            <div>⛽ รอตรวจน้ำมัน: 2 รายการ</div>
+            <div>⚠️ ลูกค้าค้างชำระ: 1 ราย</div>
+          </div>
+
+          {/* Test Send */}
+          <button onClick={sendTestSummary} disabled={summarySending}
+            className="btn-secondary text-sm flex items-center gap-1.5">
+            {summarySending
+              ? <><RefreshCw className="w-4 h-4 animate-spin" /> กำลังส่ง...</>
+              : <><Send className="w-4 h-4" /> ส่งทดสอบตอนนี้</>}
+          </button>
         </div>
       </div>
 
