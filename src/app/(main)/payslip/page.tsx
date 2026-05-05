@@ -105,12 +105,12 @@ export default function PayslipPage() {
       filename:   `ใบจ่ายเงิน_${selectedDriver?.nickname}_${monthLabel}.pdf`,
       image:      { type: 'jpeg', quality: 1.0 },
       html2canvas: {
-        scale:       PDF_CONFIG.SCALE,         // 3 — คมชัด
+        scale:       2,
         useCORS:     true,
-        windowWidth: PDF_CONFIG.A4_WIDTH_PX,   // 794px — A4 at 96dpi
+        // windowWidth ต้องใหญ่พอรองรับ sidebar (~260px) + content (794px)
+        windowWidth: 1440,
         logging:     false,
         onclone:     (doc: Document) => {
-          // Ensure font loads in clone
           const link = doc.createElement('link');
           link.rel = 'stylesheet';
           link.href = 'https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap';
@@ -135,11 +135,11 @@ export default function PayslipPage() {
     if (!el) return;
 
     const canvas = await (window as any).html2canvas(el, {
-      scale:       PDF_CONFIG.SCALE,       // 3 — คุณภาพสูง
-      useCORS:     true,
-      windowWidth: PDF_CONFIG.A4_WIDTH_PX,
+      scale:           2,
+      useCORS:         true,
+      windowWidth:     1440,
       backgroundColor: '#ffffff',
-      logging:     false,
+      logging:         false,
     });
 
     const a   = document.createElement('a');
