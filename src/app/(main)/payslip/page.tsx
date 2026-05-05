@@ -264,13 +264,13 @@ export default function PayslipPage() {
             ref={invoiceRef}
             style={{
               fontFamily:      "'Sarabun', sans-serif",
-              fontSize:        '11px',
+              fontSize:        '13px',
               backgroundColor: '#ffffff',
               width:           `${PDF_CONFIG.A4_WIDTH_PX}px`,
               minHeight:       '1123px',
-              padding:         '24px 32px',
+              padding:         '28px 36px',
               boxSizing:       'border-box',
-              lineHeight:      1.25,
+              lineHeight:      1.5,
               color:           '#111827',
             }}
           >
@@ -278,24 +278,24 @@ export default function PayslipPage() {
               @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap');
               #payslip-content * { font-family: 'Sarabun', sans-serif !important; }
               #payslip-content table td,
-              #payslip-content table th { line-height: 1.4 !important; }
+              #payslip-content table th { line-height: 1.5 !important; }
             `}</style>
 
             {/* ── Header ── */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', borderBottom: '2px solid #1E3A5F', paddingBottom: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px', borderBottom: '2px solid #1E3A5F', paddingBottom: '10px' }}>
               <div>
-                <h1 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 1px 0' }}>{COMPANY.name}</h1>
-                <p style={{ fontSize: '10px', color: '#6B7280', margin: 0 }}>{COMPANY.address}</p>
+                <h1 style={{ fontSize: '20px', fontWeight: 800, margin: '0 0 2px 0' }}>{COMPANY.name}</h1>
+                <p style={{ fontSize: '12px', color: '#6B7280', margin: 0 }}>{COMPANY.address}</p>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <h2 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 2px 0', color: '#1E3A5F' }}>ใบจ่ายเงินเดือนรถพ่วง</h2>
-                <p style={{ fontSize: '10px', margin: '1px 0' }}><strong>ประจำเดือน:</strong> {monthLabel}</p>
-                <p style={{ fontSize: '10px', margin: '1px 0' }}><strong>วันที่ออกเอกสาร:</strong> {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                <h2 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 2px 0', color: '#1E3A5F' }}>ใบจ่ายเงินเดือนรถพ่วง</h2>
+                <p style={{ fontSize: '12px', margin: '2px 0' }}><strong>ประจำเดือน:</strong> {monthLabel}</p>
+                <p style={{ fontSize: '12px', margin: '2px 0' }}><strong>วันที่ออกเอกสาร:</strong> {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
               </div>
             </div>
 
             {/* ── Info row ── */}
-            <div style={{ display: 'flex', gap: '20px', marginBottom: '8px', fontSize: '10px', backgroundColor: '#F1F5F9', padding: '4px 8px', borderRadius: '3px' }}>
+            <div style={{ display: 'flex', gap: '24px', marginBottom: '10px', fontSize: '12px', backgroundColor: '#F1F5F9', padding: '6px 10px', borderRadius: '4px' }}>
               <span><strong>คนขับ:</strong> {selectedDriver?.name || '-'}</span>
               <span><strong>ทะเบียน:</strong> {selectedDriver?.license_plate || '-'}</span>
               <span><strong>เลขบัญชี:</strong> {selectedDriver?.bank_account || '-'}</span>
