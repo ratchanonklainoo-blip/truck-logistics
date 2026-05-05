@@ -60,7 +60,7 @@ export default function PayslipPage() {
     document.body.appendChild(wrapper);
 
     const canvas = await (window as any).html2canvas(clone, {
-      scale:           2,
+      scale:           3,
       useCORS:         true,
       backgroundColor: '#ffffff',
       windowWidth:     794,
@@ -133,8 +133,8 @@ export default function PayslipPage() {
       const cW     = pageW - margin * 2;                 // 200 mm
       const cH     = pageH - margin * 2;                 // 287 mm
 
-      // Scale image (px) → mm: 1px = 25.4/96 mm at 96dpi, scale=2 → 25.4/(96*2)
-      const pxToMm = 25.4 / (96 * 2);
+      // Scale image (px) → mm: 1px = 25.4/96 mm at 96dpi, scale=3 → 25.4/(96*3)
+      const pxToMm = 25.4 / (96 * 3);
       let imgW = canvas.width  * pxToMm;  // mm
       let imgH = canvas.height * pxToMm;  // mm
 
@@ -276,9 +276,12 @@ export default function PayslipPage() {
           >
             <style>{`
               @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap');
-              #payslip-content * { font-family: 'Sarabun', sans-serif !important; }
+              #payslip-content * { font-family: 'Sarabun', sans-serif !important; box-sizing: border-box; }
               #payslip-content table td,
-              #payslip-content table th { line-height: 1.5 !important; }
+              #payslip-content table th {
+                line-height: 1.8 !important;
+                vertical-align: middle !important;
+              }
             `}</style>
 
             {/* ── Header ── */}
@@ -302,23 +305,23 @@ export default function PayslipPage() {
             </div>
 
             {/* ── Trip table ── */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10.5px', marginBottom: '8px', tableLayout: 'fixed' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', marginBottom: '8px', tableLayout: 'fixed' }}>
               <colgroup>
                 <col style={{ width: '4%' }} />   {/* # */}
-                <col style={{ width: '10%' }} />  {/* วันที่ */}
-                <col style={{ width: '15%' }} />  {/* สินค้า */}
-                <col style={{ width: '12%' }} />  {/* ต้นทาง */}
-                <col style={{ width: '12%' }} />  {/* ปลายทาง */}
+                <col style={{ width: '11%' }} />  {/* วันที่ */}
+                <col style={{ width: '14%' }} />  {/* สินค้า */}
+                <col style={{ width: '13%' }} />  {/* ต้นทาง */}
+                <col style={{ width: '13%' }} />  {/* ปลายทาง */}
                 <col style={{ width: '10%' }} />  {/* ค่าเที่ยว */}
                 <col style={{ width: '10%' }} />  {/* เบิก */}
-                <col style={{ width: '27%' }} />  {/* หมายเหตุ */}
+                <col style={{ width: '25%' }} />  {/* หมายเหตุ */}
               </colgroup>
               <thead>
                 <tr style={{ backgroundColor: '#1E3A5F', color: '#fff' }}>
                   {['#','วันที่','สินค้า','ต้นทาง','ปลายทาง','ค่าเที่ยว','เบิก','หมายเหตุ'].map((h, i) => (
                     <th key={h} style={{
-                      border: '1px solid #374151', padding: '5px 8px',
-                      fontWeight: 700, fontSize: '10.5px',
+                      border: '1px solid #374151', padding: '7px 10px',
+                      fontWeight: 700, fontSize: '12.5px',
                       textAlign: i === 5 || i === 6 ? 'right' : 'center',
                     }}>{h}</th>
                   ))}
@@ -327,24 +330,24 @@ export default function PayslipPage() {
               <tbody>
                 {billableTrips.map((trip, idx) => (
                   <tr key={trip.id} style={{ backgroundColor: idx % 2 === 1 ? '#F8FAFC' : '#fff' }}>
-                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 8px', textAlign:'center' }}>{idx + 1}</td>
-                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 8px', textAlign:'center', whiteSpace:'nowrap' }}>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'6px 8px', textAlign:'center' }}>{idx + 1}</td>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'6px 8px', textAlign:'center' }}>
                       {formatThaiDate(trip.date, true)}
                     </td>
-                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 8px', whiteSpace:'nowrap' }}>{trip.product || '-'}</td>
-                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 8px', textAlign:'center', whiteSpace:'nowrap' }}>{trip.origin || '-'}</td>
-                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 8px', textAlign:'center', whiteSpace:'nowrap' }}>{trip.destination || '-'}</td>
-                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 8px', textAlign:'right', fontWeight:600 }}>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'6px 10px' }}>{trip.product || '-'}</td>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'6px 10px', textAlign:'center' }}>{trip.origin || '-'}</td>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'6px 10px', textAlign:'center' }}>{trip.destination || '-'}</td>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'6px 10px', textAlign:'right', fontWeight:600 }}>
                       {trip.trip_pay > 0 ? formatNumber(trip.trip_pay) : '-'}
                     </td>
-                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 8px', textAlign:'right', color:'#DC2626' }}>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'6px 10px', textAlign:'right', color:'#DC2626' }}>
                       {trip.withdraw > 0 ? formatNumber(trip.withdraw) : '-'}
                     </td>
-                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 8px', fontSize:'9.5px' }}>{trip.remarks || ''}</td>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'6px 10px', fontSize:'11px' }}>{trip.remarks || ''}</td>
                   </tr>
                 ))}
                 {Array.from({ length: emptyRowCount }).map((_, i) => (
-                  <tr key={`empty-${i}`} style={{ height: '22px' }}>
+                  <tr key={`empty-${i}`} style={{ height: '30px' }}>
                     {Array.from({ length: 8 }).map((_, j) => (
                       <td key={j} style={{ border: '1px solid #CBD5E1' }} />
                     ))}
@@ -352,10 +355,10 @@ export default function PayslipPage() {
                 ))}
               </tbody>
               <tfoot>
-                <tr style={{ backgroundColor: '#1E3A5F', color: '#fff', fontWeight: 700, fontSize: '10.5px' }}>
-                  <td colSpan={5} style={{ border:'1px solid #374151', padding:'5px 8px', textAlign:'right' }}>รวมเป็นเงิน / Total</td>
-                  <td style={{ border:'1px solid #374151', padding:'5px 8px', textAlign:'right' }}>{formatNumber(totals.trip_pay)}</td>
-                  <td style={{ border:'1px solid #374151', padding:'5px 8px', textAlign:'right', color:'#FCA5A5' }}>{formatNumber(totals.withdraw)}</td>
+                <tr style={{ backgroundColor: '#1E3A5F', color: '#fff', fontWeight: 700, fontSize: '12.5px' }}>
+                  <td colSpan={5} style={{ border:'1px solid #374151', padding:'7px 10px', textAlign:'right' }}>รวมเป็นเงิน / Total</td>
+                  <td style={{ border:'1px solid #374151', padding:'7px 10px', textAlign:'right' }}>{formatNumber(totals.trip_pay)}</td>
+                  <td style={{ border:'1px solid #374151', padding:'7px 10px', textAlign:'right', color:'#FCA5A5' }}>{formatNumber(totals.withdraw)}</td>
                   <td style={{ border:'1px solid #374151' }} />
                 </tr>
               </tfoot>
@@ -376,29 +379,29 @@ export default function PayslipPage() {
               </div>
 
               {/* Summary box on the RIGHT */}
-              <div style={{ border: '2px solid #1E3A5F', borderRadius: '4px', overflow: 'hidden', minWidth: '270px', fontSize: '10.5px' }}>
-                <div style={{ backgroundColor: '#1E3A5F', color: '#fff', padding: '4px 10px', fontWeight: 700, fontSize: '11px' }}>
+              <div style={{ border: '2px solid #1E3A5F', borderRadius: '4px', overflow: 'hidden', minWidth: '290px', fontSize: '12.5px' }}>
+                <div style={{ backgroundColor: '#1E3A5F', color: '#fff', padding: '6px 12px', fontWeight: 700, fontSize: '13px' }}>
                   สรุปการจ่ายเงิน
                 </div>
-                <div style={{ padding: '6px 10px', backgroundColor: '#F9FAFB' }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'3px' }}>
+                <div style={{ padding: '8px 12px', backgroundColor: '#F9FAFB' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'5px' }}>
                     <span>รายรับรวม (ค่าเที่ยว):</span><strong>{formatNumber(totals.trip_pay)} บาท</strong>
                   </div>
-                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'3px', color:'#059669' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'5px', color:'#059669' }}>
                     <span>+ เงินเดือน:</span><span>{formatNumber(salary)} บาท</span>
                   </div>
-                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'4px', fontWeight:700, borderTop:'1px solid #CBD5E1', paddingTop:'3px' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'5px', fontWeight:700, borderTop:'1px solid #CBD5E1', paddingTop:'5px' }}>
                     <span>รวมรายรับทั้งหมด:</span><span>{formatNumber(grossIncome)} บาท</span>
                   </div>
-                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'3px', color:'#DC2626' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'5px', color:'#DC2626' }}>
                     <span>- หักเบิก:</span><span>{formatNumber(totals.withdraw)} บาท</span>
                   </div>
                   {socialSec > 0 && (
-                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'3px', color:'#DC2626' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'5px', color:'#DC2626' }}>
                       <span>- หักประกันสังคม:</span><span>{formatNumber(socialSec)} บาท</span>
                     </div>
                   )}
-                  <div style={{ display:'flex', justifyContent:'space-between', borderTop:'2px solid #1E3A5F', paddingTop:'4px', marginTop:'3px', fontSize:'14px', fontWeight:800 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', borderTop:'2px solid #1E3A5F', paddingTop:'6px', marginTop:'4px', fontSize:'15px', fontWeight:800 }}>
                     <span>คงเหลือสุทธิ:</span>
                     <span style={{ color:'#1E3A5F', borderBottom:'3px double #1E3A5F' }}>{formatNumber(netPay)} บาท</span>
                   </div>
