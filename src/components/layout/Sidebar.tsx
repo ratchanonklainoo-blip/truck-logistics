@@ -28,7 +28,7 @@ const NAV_ITEMS = [
   { href: '/customers',  label: 'ลูกค้า',              icon: Users,           badge: null },
   { href: '/drivers',    label: 'คนขับ',               icon: UserCheck,       badge: null },
   { href: '/payroll',    label: 'เงินเดือนและค่ารอบ', icon: Wallet,          badge: null },
-  { href: '/import',     label: 'ชิปปิ้งนำเข้า',       icon: Ship,            badge: null },
+  { href: '/import',     label: 'ชิปปิ้ง',       icon: Ship,            badge: null },
   { href: '/alerts',     label: 'แจ้งเตือน',           icon: Bell,            badge: 'alerts'   as keyof Badges },
   { href: '/settings',   label: 'ตั้งค่าระบบ',         icon: Settings,        badge: null },
 ] as const;

@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS customer_payments (
                     CHECK (payment_method IN ('cash','transfer','cheque','other')),
   reference_no      TEXT,
   notes             TEXT,
-  created_by        UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_by        UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at        TIMESTAMPTZ DEFAULT now(),
   updated_at        TIMESTAMPTZ DEFAULT now(),
   deleted_at        TIMESTAMPTZ
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS import_lots (
   arrival_date        DATE,
   delivery_date       DATE,
   notes               TEXT,
-  created_by          UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_by          UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at          TIMESTAMPTZ DEFAULT now(),
   updated_at          TIMESTAMPTZ DEFAULT now(),
   deleted_at          TIMESTAMPTZ
