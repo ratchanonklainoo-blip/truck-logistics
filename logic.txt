@@ -1,0 +1,1347 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, 
+  signInAnonymously, 
+  onAuthStateChanged, 
+  signInWithCustomToken 
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  deleteDoc, 
+  updateDoc, 
+  setDoc, 
+  getDoc, 
+  doc, 
+  onSnapshot, 
+  query, 
+  serverTimestamp,
+  where,
+  limit,
+  getDocs
+} from 'firebase/firestore';
+import { 
+  Truck, 
+  FileText, 
+  Plus, 
+  Trash2, 
+  Printer, 
+  Save, 
+  DollarSign,
+  TrendingUp,
+  User,
+  Users,
+  Pencil, 
+  X,
+  Tag, 
+  Settings, 
+  Fuel, 
+  Gauge,
+  Calculator,
+  Calendar,
+  Package,
+  Wrench,
+  AlertTriangle,
+  ChevronDown, 
+  Check,
+  MapPin,
+  Wallet,
+  ShieldCheck,
+  Building2,
+  Download,
+  BarChart3, 
+  Image as ImageIcon,
+  Upload,
+  Eye,
+  FileInput 
+} from 'lucide-react';
+
+// --- Firebase Initialization ---
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+// --- Constants & Config ---
+const DRIVERS = [
+  { 
+    id: 'driver_jong', 
+    name: 'นายไพศาล เมฆอากาศ', 
+    nickname: 'จง',
+    license: '71-1831 - 71-1832 เชียงราย', 
+    bank: '0-18-3-54437-3 กสิกรไทย',
+    socialSecurity: 435 
+  },
+  { 
+    id: 'driver_phoom', 
+    name: 'นายภาคภูมิ รักคณะ', 
+    nickname: 'ภูมิ', 
+    license: '71-1833 - 71-1834 เชียงราย', 
+    bank: '174-1-96928-5 กสิกรไทย',
+    socialSecurity: 870 
+  }
+];
+
+const DEFAULT_COMPANY = 'หจก.ณสิริทรัพย์ การเกษตร';
+const DEFAULT_ADDRESS = 'ที่อยู่ :61 หมู่ 2 ต.ท่าข้าวเหลือก อ.แม่จัน จ.เชียงราย 57110';
+
+const THAI_MONTHS = [
+  "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+  "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+];
+
+const today = new Date();
+const CURRENT_MONTH = THAI_MONTHS[today.getMonth()];
+const CURRENT_YEAR = (today.getFullYear() + 543).toString();
+
+const DEFAULT_CATEGORIES = ['ข้าวโพดสด', 'ข้าวโพดแห้ง', 'ข้าวโพดสับ', 'ข้าว', 'มันสำปะหลัง', 'ยางพารา', 'อ้อย', 'ปุ๋ย', 'ปูนซีเมนต์', 'หิน', 'ทราย'];
+
+const DEFAULT_LOCATIONS = [
+  'เชียงราย', 'เชียงใหม่', 'ลำปาง', 'พะเยา', 'แพร่', 'น่าน', 
+  'ลำพูน', 'แม่ฮ่องสอน', 'อุตรดิตถ์', 'พิษณุโลก', 'สุโขทัย', 
+  'เพชรบูรณ์', 'พิจิตร', 'กำแพงเพชร', 'นครสวรรค์', 'ตาก', 'อุทัยธานี',
+  'จุน', 'ป่าแดด', 'เชียงคำ', 'ดอกคำใต้', 'เทิง', 'พาน', 'แม่สอด',
+  'กรุงเทพมหานคร', 'นนทบุรี', 'ปทุมธานี', 'สมุทรปราการ', 
+  'สมุทรสาคร', 'สมุทรสงคราม', 'นครปฐม', 'พระนครศรีอยุธยา', 
+  'สระบุรี', 'ลพบุรี', 'สิงห์บุรี', 'ชัยนาท', 'อ่างทอง', 'สุพรรณบุรี',
+  'นครนายก', 'ชลบุรี', 'ระยอง', 'จันทบุรี', 'ตราด', 
+  'ฉะเชิงเทรา', 'ปราจีนบุรี', 'สระแก้ว',
+  'พัทยา', 'ศรีราชา', 'แหลมฉบัง', 'มาบตาพุด', 'อรัญประเทศ',
+  'นครราชสีมา', 'ขอนแก่น', 'อุดรธานี', 'อุบลราชธานี', 
+  'หนองคาย', 'สกลนคร', 'ร้อยเอ็ด', 'บุรีรัมย์', 'สุรินทร์', 
+  'ศรีสะเกษ', 'มหาสารคาม', 'กาฬสินธุ์', 'มุกดาหาร', 'นครพนม', 
+  'เลย', 'ชัยภูมิ', 'ยโสธร', 'อำนาจเจริญ', 'บึงกาฬ', 'หนองบัวลำภู',
+  'กาญจนบุรี', 'ราชบุรี', 'เพชรบุรี', 'ประจวบคีรีขันธ์',
+  'หัวหิน', 'ชะอำ', 'ภูเก็ต', 'สงขลา', 'สุราษฎร์ธานี', 'นครศรีธรรมราช', 
+  'ชุมพร', 'ระนอง', 'พังงา', 'กระบี่', 'ตรัง', 'สตูล', 
+  'พัทลุง', 'ปัตตานี', 'ยะลา', 'นราธิวาส',
+  'หาดใหญ่', 'เบตง', 'ทุ่งสง', 'พุนพิน'
+];
+
+const compressImage = (file) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800; 
+        const scaleSize = MAX_WIDTH / img.width;
+        canvas.width = MAX_WIDTH;
+        canvas.height = img.height * scaleSize;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.6));
+      };
+    };
+  });
+};
+
+const Card = ({ children, className = "" }) => (
+  <div className={`bg-white rounded-lg shadow-md border border-gray-200 ${className}`}>
+    {children}
+  </div>
+);
+
+const InputGroup = ({ label, name, value, onChange, type = "text", placeholder, width = "w-full", disabled = false, step, readOnly = false, onClick, onFocus, icon }) => (
+  <div className={`flex flex-col ${width}`}>
+    <label className="text-sm font-medium text-gray-700 mb-1">{label}</label>
+    <div className="relative">
+      <input
+        type={type}
+        name={name} 
+        value={value === null || value === undefined ? '' : value}
+        onChange={onChange}
+        onClick={onClick}
+        onFocus={onFocus}
+        placeholder={placeholder}
+        disabled={disabled}
+        readOnly={readOnly}
+        step={step}
+        autoComplete="off"
+        className={`border border-gray-300 rounded-md px-3 py-2 w-full focus:ring-2 focus:ring-blue-500 focus:outline-none transition-colors 
+          ${disabled || readOnly ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''} ${icon ? 'pr-10' : ''}`}
+      />
+      {icon && (
+        <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
+          {icon}
+        </div>
+      )}
+    </div>
+  </div>
+);
+
+const Dashboard = ({ entries, companyStats }) => {
+  const monthlyData = useMemo(() => {
+    const driverStats = DRIVERS.map(d => {
+      const dEntries = entries.filter(e => e.driverId === d.id);
+      const transportRevenue = dEntries.reduce((sum, e) => sum + (Number(e.transportPrice) || 0), 0);
+      const income = dEntries.reduce((sum, e) => sum + (e.tripPay || 0), 0);
+      const expense = dEntries.reduce((sum, e) => sum + (e.fuelCost || 0) + (e.otherCost || 0), 0);
+      const fuelExpense = dEntries.reduce((sum, e) => sum + (e.fuelCost || 0), 0);
+      const distance = dEntries.reduce((sum, e) => sum + (e.distance || 0), 0);
+      const fuel = dEntries.reduce((sum, e) => sum + (e.fuelLitres || 0), 0);
+      const consumption = fuel > 0 ? (distance / fuel).toFixed(2) : 0;
+      return { name: d.nickname, transportRevenue, income, expense, fuelExpense, consumption };
+    });
+    return driverStats;
+  }, [entries]);
+
+  const maxVal = Math.max(...monthlyData.map(d => Math.max(d.income, d.expense)), 1000);
+
+  return (
+    <div className="space-y-6 animate-fade-in-up">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className="p-6">
+          <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+            <BarChart3 className="w-5 h-5 mr-2 text-blue-600" /> เปรียบเทียบรายรับ-รายจ่าย (เดือนนี้)
+          </h3>
+          <div className="space-y-4">
+            {monthlyData.map(d => (
+              <div key={d.name} className="space-y-1">
+                <div className="flex justify-between text-sm font-medium">
+                  <span>{d.name}</span>
+                </div>
+                <div className="h-4 w-full bg-gray-100 rounded-full overflow-hidden flex">
+                  <div style={{ width: `${(d.income / maxVal) * 100}%` }} className="h-full bg-green-500" title={`รายรับ(ค่าเที่ยว): ${d.income.toLocaleString()}`}></div>
+                </div>
+                <div className="h-4 w-full bg-gray-100 rounded-full overflow-hidden flex">
+                  <div style={{ width: `${(d.expense / maxVal) * 100}%` }} className="h-full bg-red-400" title={`รายจ่ายรวม: ${d.expense.toLocaleString()}`}></div>
+                </div>
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>รับ: {d.income.toLocaleString()}</span>
+                  <span>จ่ายรวม: {d.expense.toLocaleString()} (น้ำมัน: {d.fuelExpense.toLocaleString()})</span>
+                </div>
+                <div className="text-[11px] text-purple-600 font-medium text-right mt-0.5">
+                  ยอดค่าขนส่งที่ทำได้: {d.transportRevenue.toLocaleString()} บาท
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+            <Gauge className="w-5 h-5 mr-2 text-orange-500" /> อัตราสิ้นเปลือง (กม./ลิตร)
+          </h3>
+          <div className="flex items-end justify-around h-40 space-x-4">
+            {monthlyData.map(d => (
+              <div key={d.name} className="flex flex-col items-center w-full group">
+                <div className="text-lg font-bold text-orange-600 mb-1">{d.consumption}</div>
+                <div 
+                  className="w-full bg-orange-200 rounded-t-md transition-all duration-500 group-hover:bg-orange-300"
+                  style={{ height: `${Math.min(d.consumption * 20, 100)}%` }} 
+                ></div>
+                <div className="mt-2 text-sm font-medium text-gray-600">{d.name}</div>
+              </div>
+            ))}
+          </div>
+          <p className="text-center text-xs text-gray-400 mt-4">*ยิ่งสูงยิ่งประหยัด</p>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+export default function LogisticsApp() {
+  const [user, setUser] = useState(null);
+  const [allEntries, setAllEntries] = useState([]); 
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('entry'); 
+  
+  const [selectedDriverId, setSelectedDriverId] = useState(DRIVERS[0].id);
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [locations, setLocations] = useState(DEFAULT_LOCATIONS);
+  
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [showOriginDropdown, setShowOriginDropdown] = useState(false);
+  const [showDestinationDropdown, setShowDestinationDropdown] = useState(false);
+  
+  const productDropdownRef = useRef(null);
+  const originDropdownRef = useRef(null);
+  const destinationDropdownRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
+  const [previewImage, setPreviewImage] = useState(null);
+
+  const [initialOdometer, setInitialOdometer] = useState(0);
+  const [showOdometerSettings, setShowOdometerSettings] = useState(false);
+  const [tempInitialOdometer, setTempInitialOdometer] = useState('');
+  const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
+  const [isDownloadingPNG, setIsDownloadingPNG] = useState(false);
+
+  const currentDriver = useMemo(() => 
+    DRIVERS.find(d => d.id === selectedDriverId) || DRIVERS[0]
+  , [selectedDriverId]);
+
+  const [headerInfo, setHeaderInfo] = useState({
+    month: CURRENT_MONTH,
+    year: CURRENT_YEAR,
+    companyName: DEFAULT_COMPANY,
+    address: DEFAULT_ADDRESS,
+    salary: 5000,
+    socialSecurity: DRIVERS[0].socialSecurity, 
+    licensePlate: DRIVERS[0].license 
+  });
+
+  const initialFormState = {
+    date: new Date().toISOString().split('T')[0],
+    origin: '',
+    destination: '',
+    product: '',
+    weight: '', 
+    transportPrice: '', 
+    odometerStart: '', 
+    odometerEnd: '',   
+    distance: '',
+    fuelCost: '',
+    fuelLitres: '', 
+    otherItem: '', 
+    otherCost: '', 
+    tripPay: '', 
+    withdraw: '', 
+    remarks: '',
+    receiptImage: null 
+  };
+  const [formData, setFormData] = useState(initialFormState);
+
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth error:", err);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      if (!u) setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+    script.async = true;
+    document.body.appendChild(script);
+
+    const scriptCanvas = document.createElement('script');
+    scriptCanvas.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+    scriptCanvas.async = true;
+    document.body.appendChild(scriptCanvas);
+
+    return () => { 
+      document.body.removeChild(script); 
+      document.body.removeChild(scriptCanvas);
+    };
+  }, []);
+
+  useEffect(() => {
+    const driver = DRIVERS.find(d => d.id === selectedDriverId);
+    if (driver) {
+      setHeaderInfo(prev => ({ 
+        ...prev, 
+        licensePlate: driver.license,
+        socialSecurity: driver.socialSecurity 
+      }));
+    }
+  }, [selectedDriverId]);
+
+  useEffect(() => {
+    if (!user) return;
+    const catRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'categories');
+    const locRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'locations');
+    
+    const unsubCat = onSnapshot(catRef, (s) => s.exists() && setCategories(s.data().list || DEFAULT_CATEGORIES));
+    const unsubLoc = onSnapshot(locRef, (s) => s.exists() && setLocations(s.data().list || DEFAULT_LOCATIONS));
+    
+    return () => { unsubCat(); unsubLoc(); };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !selectedDriverId) return;
+    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', `driver_${selectedDriverId}`);
+    const unsub = onSnapshot(docRef, (s) => {
+      setInitialOdometer(s.exists() ? (Number(s.data().initialOdometer) || 0) : 0);
+    });
+    return () => unsub();
+  }, [user, selectedDriverId]);
+
+  useEffect(() => {
+    if (!user) return;
+    setLoading(true);
+    const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'truck_logs'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setAllEntries(data); 
+      setLoading(false);
+    }, (error) => {
+      console.error("Firestore sync error:", error);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (productDropdownRef.current && !productDropdownRef.current.contains(event.target)) setShowProductDropdown(false);
+      if (originDropdownRef.current && !originDropdownRef.current.contains(event.target)) setShowOriginDropdown(false);
+      if (destinationDropdownRef.current && !destinationDropdownRef.current.contains(event.target)) setShowDestinationDropdown(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const checkStandardRate = async () => {
+      if (formData.origin && formData.destination && !formData.transportPrice) { 
+        const match = allEntries.find(e => 
+          e.origin === formData.origin && 
+          e.destination === formData.destination &&
+          e.transportPrice
+        );
+        if (match) {
+          const price = Number(match.transportPrice);
+          setFormData(prev => ({
+            ...prev,
+            transportPrice: price,
+            tripPay: price * 0.10
+          }));
+        }
+      }
+    };
+    checkStandardRate();
+  }, [formData.origin, formData.destination]); 
+
+  const isDateInSelectedMonth = (dateStr) => {
+    if (!dateStr) return false;
+    const date = new Date(dateStr);
+    const monthIndex = THAI_MONTHS.indexOf(headerInfo.month);
+    const year = parseInt(headerInfo.year) - 543; 
+    return date.getMonth() === monthIndex && date.getFullYear() === year;
+  };
+
+  const currentDriverEntries = useMemo(() => {
+    return allEntries
+      .filter(item => item.driverId === selectedDriverId && isDateInSelectedMonth(item.date))
+      .sort((a, b) => new Date(a.date) - new Date(b.date) || (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+  }, [allEntries, selectedDriverId, headerInfo.month, headerInfo.year]);
+
+  const companyMonthEntries = useMemo(() => {
+    return allEntries.filter(item => isDateInSelectedMonth(item.date));
+  }, [allEntries, headerInfo.month, headerInfo.year]);
+  
+  const billEntries = useMemo(() => {
+    return currentDriverEntries.filter(entry => 
+      (entry.product && entry.product.trim().length > 0) || 
+      (entry.withdraw && Number(entry.withdraw) > 0)
+    );
+  }, [currentDriverEntries]);
+
+  useEffect(() => {
+    if (!isEditing && !loading && formData.odometerStart === '') {
+      let nextStart = initialOdometer;
+      if (currentDriverEntries.length > 0) {
+        const selectedDate = new Date(formData.date);
+        selectedDate.setHours(0,0,0,0); 
+        const previousEntries = currentDriverEntries.filter(e => {
+          const entryDate = new Date(e.date);
+          entryDate.setHours(0,0,0,0);
+          return entryDate < selectedDate;
+        });
+        if (previousEntries.length > 0) {
+          const lastPrevEntry = previousEntries[previousEntries.length - 1];
+          if (lastPrevEntry.odometerEnd) nextStart = lastPrevEntry.odometerEnd;
+        } else {
+          nextStart = initialOdometer;
+        }
+      }
+      setFormData(prev => ({ ...prev, odometerStart: nextStart }));
+    }
+  }, [formData.date, currentDriverEntries, initialOdometer, isEditing, loading, formData.odometerStart]);
+
+  const handleDriverChange = (e) => {
+    setSelectedDriverId(e.target.value);
+    handleCancelEdit();
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    if (name === 'transportPrice') {
+      const price = parseFloat(value);
+      const calculatedTripPay = !isNaN(price) ? (price * 0.10) : '';
+      setFormData(prev => ({ ...prev, [name]: value, tripPay: calculatedTripPay }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert("ไฟล์ใหญ่เกินไป (ต้องไม่เกิน 5MB)");
+        return;
+      }
+      const compressedBase64 = await compressImage(file);
+      setFormData(prev => ({ ...prev, receiptImage: compressedBase64 }));
+    }
+  };
+
+  const handleOdometerStartChange = (e) => {
+    const val = e.target.value;
+    const start = parseFloat(val);
+    const end = parseFloat(formData.odometerEnd);
+    let newDist = formData.distance;
+    if (!isNaN(start) && !isNaN(end)) newDist = end - start;
+    setFormData(prev => ({ ...prev, odometerStart: val, distance: newDist }));
+  };
+
+  const handleOdometerEndChange = (e) => {
+    const val = e.target.value;
+    const end = parseFloat(val);
+    const start = parseFloat(formData.odometerStart);
+    let newDist = formData.distance;
+    if (!isNaN(start) && !isNaN(end)) newDist = end - start;
+    setFormData(prev => ({ ...prev, odometerEnd: val, distance: newDist }));
+  };
+
+  const handleDistanceChange = (e) => {
+    const val = e.target.value;
+    const dist = parseFloat(val);
+    const start = parseFloat(formData.odometerStart);
+    let newEnd = formData.odometerEnd;
+    if (!isNaN(start) && !isNaN(dist)) newEnd = start + dist;
+    setFormData(prev => ({ ...prev, distance: val, odometerEnd: newEnd }));
+  };
+
+  const handleHeaderChange = (e) => {
+    const { name, value } = e.target;
+    setHeaderInfo(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleMonthChange = (name, value) => {
+    setHeaderInfo(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleProductFocus = () => setShowProductDropdown(true);
+  const handleOriginFocus = () => setShowOriginDropdown(true);
+  const handleDestinationFocus = () => setShowDestinationDropdown(true);
+
+  const handleSelectCategory = (val) => { setFormData(prev => ({ ...prev, product: val })); setShowProductDropdown(false); };
+  const handleSelectOrigin = (val) => { setFormData(prev => ({ ...prev, origin: val })); setShowOriginDropdown(false); };
+  const handleSelectDestination = (val) => { setFormData(prev => ({ ...prev, destination: val })); setShowDestinationDropdown(false); };
+
+  const handleAddNewCategory = async (newCat) => {
+    if (!newCat || !newCat.trim()) return;
+    const trimmed = newCat.trim();
+    if (categories.includes(trimmed)) { handleSelectCategory(trimmed); return; }
+    const updated = [...categories, trimmed];
+    setCategories(updated);
+    handleSelectCategory(trimmed);
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'categories'), { list: updated });
+  };
+
+  const handleAddNewLocation = async (newLoc, field) => {
+    if (!newLoc || !newLoc.trim()) return;
+    const trimmed = newLoc.trim();
+    if (!locations.includes(trimmed)) {
+      const updated = [...locations, trimmed];
+      setLocations(updated);
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'locations'), { list: updated });
+    }
+    setFormData(prev => ({ ...prev, [field]: trimmed }));
+    if (field === 'origin') setShowOriginDropdown(false);
+    if (field === 'destination') setShowDestinationDropdown(false);
+  };
+
+  const handleSaveInitialOdometer = async () => {
+    const val = Number(tempInitialOdometer);
+    if (!isNaN(val)) {
+      setInitialOdometer(val);
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', `driver_${selectedDriverId}`), { initialOdometer: val });
+      setShowOdometerSettings(false);
+    }
+  };
+
+  const handleEdit = (entry) => {
+    setIsEditing(true);
+    setEditId(entry.id);
+    setFormData({ ...entry });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditId(null);
+    setFormData(initialFormState);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!user) return;
+    const payload = {
+      ...formData,
+      driverId: selectedDriverId,
+      odometerStart: Number(formData.odometerStart) || 0,
+      odometerEnd: Number(formData.odometerEnd) || 0,
+      distance: Number(formData.distance) || 0,
+      tripPay: Number(formData.tripPay) || 0,
+      withdraw: Number(formData.withdraw) || 0,
+      fuelCost: Number(formData.fuelCost) || 0,
+      fuelLitres: Number(formData.fuelLitres) || 0,
+      otherCost: Number(formData.otherCost) || 0,
+      weight: formData.weight || '', 
+      transportPrice: Number(formData.transportPrice) || 0,
+      receiptImage: formData.receiptImage || null,
+      updatedAt: serverTimestamp()
+    };
+
+    try {
+      if (isEditing && editId) {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'truck_logs', editId), payload);
+        handleCancelEdit(); 
+      } else {
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'truck_logs'), { ...payload, createdAt: serverTimestamp() });
+        setFormData(initialFormState); 
+      }
+    } catch (error) { console.error(error); }
+  };
+
+  const initiateDelete = (entry) => { setItemToDelete(entry); setDeleteModalOpen(true); };
+  const confirmDeleteAction = async () => {
+    if (!itemToDelete) return;
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'truck_logs', itemToDelete.id));
+      if (editId === itemToDelete.id) handleCancelEdit();
+      setDeleteModalOpen(false); setItemToDelete(null);
+    } catch (error) { console.error(error); }
+  };
+
+  const handleDownloadPDF = () => {
+    if (typeof window.html2pdf === 'undefined') {
+      alert('ระบบ PDF กำลังถูกโหลด... กรุณารอ 2-3 วินาทีแล้วลองใหม่อีกครั้ง');
+      return;
+    }
+    setIsDownloadingPDF(true);
+    const element = document.getElementById('invoice-content');
+    
+    const opt = {
+      margin: 0,
+      filename: `ใบจ่ายเงิน_${currentDriver.nickname}_${headerInfo.month}_${headerInfo.year}.pdf`,
+      image: { type: 'jpeg', quality: 1.0 },
+      html2canvas: { 
+        scale: 2, 
+        useCORS: true, 
+        letterRendering: false, 
+        logging: false 
+      },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+    };
+
+    window.html2pdf()
+      .set(opt)
+      .from(element)
+      .save()
+      .then(() => {
+        setIsDownloadingPDF(false);
+      })
+      .catch(err => {
+        console.error("PDF generation failed:", err);
+        setIsDownloadingPDF(false);
+      });
+  };
+
+  const handleDownloadPNG = () => {
+    if (typeof window.html2canvas === 'undefined') {
+      alert('ระบบประมวลผลรูปภาพกำลังโหลด... กรุณารอสักครู่');
+      return;
+    }
+    setIsDownloadingPNG(true);
+    const element = document.getElementById('invoice-content');
+    
+    window.html2canvas(element, {
+      scale: 3, // คุณภาพสูงมาก
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      logging: false
+    }).then(canvas => {
+      const link = document.createElement('a');
+      link.download = `ใบจ่ายเงิน_${currentDriver.nickname}_${headerInfo.month}_${headerInfo.year}.png`;
+      link.href = canvas.toDataURL('image/png', 1.0);
+      link.click();
+      setIsDownloadingPNG(false);
+    }).catch(err => {
+      console.error("PNG generation failed:", err);
+      setIsDownloadingPNG(false);
+    });
+  };
+
+  const handleExportCSV = () => {
+    const headers = [
+      "วันที่", "คนขับ", "สินค้า", "น้ำหนัก", "ต้นทาง", "ปลายทาง",
+      "ไมล์ต้น", "ไมล์ปลาย", "ระยะทาง", "ค่าน้ำมัน", "ลิตร",
+      "ค่าขนส่ง", "ค่าเที่ยว", "เบิก", "รายการอื่นๆ", "ค่าอื่นๆ", "หมายเหตุ"
+    ];
+    const csvData = currentDriverEntries.map(row => [
+      row.date,
+      currentDriver.name,
+      `"${row.product || ''}"`,
+      `"${row.weight || ''}"`,
+      `"${row.origin || ''}"`,
+      `"${row.destination || ''}"`,
+      row.odometerStart,
+      row.odometerEnd,
+      row.distance,
+      row.fuelCost,
+      row.fuelLitres,
+      row.transportPrice,
+      row.tripPay,
+      row.withdraw,
+      `"${row.otherItem || ''}"`,
+      row.otherCost,
+      `"${row.remarks || ''}"`
+    ]);
+    const csvContent = ["\uFEFF" + headers.join(","), ...csvData.map(e => e.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `logistics_data_${currentDriver.nickname}_${headerInfo.month}_${headerInfo.year}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleImportClick = () => {
+    fileInputRef.current.click();
+  };
+
+  const handleFileImport = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target.result;
+      const rows = text.split('\n').map(row => row.split(','));
+      const startRow = rows[0][0].includes("วันที่") ? 1 : 0;
+      
+      let count = 0;
+      for (let i = startRow; i < rows.length; i++) {
+        const cols = rows[i];
+        if (cols.length < 5) continue; 
+
+        const clean = (str) => str ? str.replace(/^"|"$/g, '').trim() : '';
+        
+        const newData = {
+          date: clean(cols[0]) || new Date().toISOString().split('T')[0],
+          driverId: selectedDriverId, 
+          product: clean(cols[2]),
+          weight: clean(cols[3]),
+          origin: clean(cols[4]),
+          destination: clean(cols[5]),
+          odometerStart: Number(clean(cols[6])) || 0,
+          odometerEnd: Number(clean(cols[7])) || 0,
+          distance: Number(clean(cols[8])) || 0,
+          fuelCost: Number(clean(cols[9])) || 0,
+          fuelLitres: Number(clean(cols[10])) || 0,
+          transportPrice: Number(clean(cols[11])) || 0,
+          tripPay: Number(clean(cols[12])) || 0,
+          withdraw: Number(clean(cols[13])) || 0,
+          otherItem: clean(cols[14]),
+          otherCost: Number(clean(cols[15])) || 0,
+          remarks: clean(cols[16]),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+
+        try {
+          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'truck_logs'), newData);
+          count++;
+        } catch (err) {
+          console.error("Import error at row " + i, err);
+        }
+      }
+      alert(`นำเข้าข้อมูลสำเร็จ ${count} รายการ`);
+      e.target.value = null; 
+    };
+    reader.readAsText(file);
+  };
+
+  const filteredCategories = useMemo(() => categories.filter(c => c.toLowerCase().includes((formData.product || '').toLowerCase())), [categories, formData.product]);
+  const filteredOrigins = useMemo(() => locations.filter(l => l.toLowerCase().includes((formData.origin || '').toLowerCase())), [locations, formData.origin]);
+  const filteredDestinations = useMemo(() => locations.filter(l => l.toLowerCase().includes((formData.destination || '').toLowerCase())), [locations, formData.destination]);
+
+  const salary = Number(headerInfo.salary) || 0;
+  const socialSecurity = Number(headerInfo.socialSecurity) || 0;
+
+  const totals = useMemo(() => {
+    return currentDriverEntries.reduce((acc, curr) => ({
+      tripPay: acc.tripPay + (curr.tripPay || 0),
+      withdraw: acc.withdraw + (curr.withdraw || 0),
+      fuelCost: acc.fuelCost + (curr.fuelCost || 0),
+      fuelLitres: acc.fuelLitres + (curr.fuelLitres || 0),
+      otherCost: acc.otherCost + (curr.otherCost || 0),
+      distance: acc.distance + (curr.distance || 0),
+      transportPrice: acc.transportPrice + (Number(curr.transportPrice) || 0),
+      trips: acc.trips + 1
+    }), { tripPay: 0, withdraw: 0, fuelCost: 0, fuelLitres: 0, otherCost: 0, distance: 0, transportPrice: 0, trips: 0 });
+  }, [currentDriverEntries]);
+
+  const driverNetPay = totals.tripPay + salary - totals.withdraw - socialSecurity;
+  const totalGrossIncome = totals.tripPay + salary;
+  const avgConsumption = totals.fuelLitres > 0 ? (totals.distance / totals.fuelLitres).toFixed(2) : 0;
+
+  const companyStats = useMemo(() => {
+    const totalRevenue = companyMonthEntries.reduce((sum, item) => sum + (Number(item.transportPrice) || 0), 0);
+    const totalTripPay = companyMonthEntries.reduce((sum, item) => sum + (Number(item.tripPay) || 0), 0);
+    const totalFuel = companyMonthEntries.reduce((sum, item) => sum + (Number(item.fuelCost) || 0), 0);
+    const totalOtherCosts = companyMonthEntries.reduce((sum, item) => sum + (Number(item.otherCost) || 0), 0);
+    const activeDriversThisMonth = new Set(companyMonthEntries.map(e => e.driverId)).size;
+    const totalSalaries = (activeDriversThisMonth > 0 ? activeDriversThisMonth : 2) * salary; 
+    const totalExpenses = totalTripPay + totalFuel + totalOtherCosts + totalSalaries;
+    const netProfit = totalRevenue - totalExpenses;
+    return { totalRevenue, totalTripPay, totalFuel, totalOtherCosts, totalSalaries, totalExpenses, netProfit };
+  }, [companyMonthEntries, salary]);
+
+  const formatCurrency = (num) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(num);
+  const formatDate = (dateStr) => {
+    if (!dateStr) return "-";
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
+  };
+
+  if (loading) return <div className="flex items-center justify-center h-screen text-blue-600">กำลังโหลดข้อมูลและซิงค์ข้อมูล...</div>;
+
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
+      
+      <nav className="bg-blue-900 text-white shadow-lg print:hidden sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row justify-between h-auto md:h-16 items-center py-2 md:py-0">
+            <div className="flex items-center space-x-3 mb-2 md:mb-0">
+              <Truck className="h-8 w-8 text-yellow-400" />
+              <span className="font-bold text-xl tracking-tight">ระบบจัดการรถพ่วง</span>
+            </div>
+            
+            <div className="flex items-center bg-blue-800 rounded-lg p-1">
+              <Users className="w-5 h-5 ml-2 text-blue-200" />
+              <select 
+                value={selectedDriverId} 
+                onChange={handleDriverChange}
+                className="bg-transparent text-white border-none focus:ring-0 text-sm font-medium py-1 px-3 cursor-pointer"
+              >
+                {DRIVERS.map(driver => (
+                  <option key={driver.id} value={driver.id} className="text-gray-900">
+                    คนขับ: {driver.nickname} ({driver.name})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex space-x-2 mt-2 md:mt-0">
+              <button onClick={() => setActiveTab('entry')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'entry' ? 'bg-yellow-500 text-blue-900' : 'text-blue-200 hover:bg-blue-800'}`}>จัดการข้อมูล</button>
+              <button onClick={() => setActiveTab('dashboard')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'dashboard' ? 'bg-yellow-500 text-blue-900' : 'text-blue-200 hover:bg-blue-800'}`}>สรุปผล</button>
+              <button onClick={() => setActiveTab('bill')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'bill' ? 'bg-yellow-500 text-blue-900' : 'text-blue-200 hover:bg-blue-800'}`}>พิมพ์ใบจ่ายเงิน</button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 print:p-0 print:max-w-none">
+        
+        {(activeTab === 'entry' || activeTab === 'dashboard') && (
+          <div className="mb-6 bg-gradient-to-r from-slate-800 to-slate-700 text-white p-4 rounded-lg shadow-md print:hidden">
+            <div className="flex justify-between items-center mb-3">
+              <h2 className="text-lg font-bold flex items-center text-yellow-400">
+                <Building2 className="w-5 h-5 mr-2" /> สรุปยอดรวมบริษัท ({headerInfo.month} {headerInfo.year})
+              </h2>
+              <div className="flex items-center space-x-2 text-[10px] text-green-400 animate-pulse">
+                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                <span>เชื่อมต่อแบบเรียลไทม์แล้ว</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+              <div className="bg-white/10 p-3 rounded">
+                <p className="text-gray-300 mb-1 text-[11px]">รายรับรวม (ค่าขนส่ง)</p>
+                <p className="text-lg font-bold text-green-400">{formatCurrency(companyStats.totalRevenue)}</p>
+              </div>
+              <div className="bg-white/10 p-3 rounded">
+                <p className="text-gray-300 mb-1 text-[11px]">ค่าน้ำมันรวม</p>
+                <p className="text-lg font-bold text-blue-400">{formatCurrency(companyStats.totalFuel)}</p>
+              </div>
+              <div className="bg-white/10 p-3 rounded">
+                <p className="text-gray-300 mb-1 text-[11px]">ค่าอื่นๆ (ซ่อม/บำรุง)</p>
+                <p className="text-lg font-bold text-orange-400">{formatCurrency(companyStats.totalOtherCosts)}</p>
+              </div>
+              <div className="bg-white/10 p-3 rounded">
+                <p className="text-gray-300 mb-1 text-[11px]">รายจ่ายรวม (ทั้งหมด)</p>
+                <p className="text-lg font-bold text-red-400">{formatCurrency(companyStats.totalExpenses)}</p>
+              </div>
+              <div className="bg-white/10 p-3 rounded border border-white/20">
+                <p className="text-gray-300 mb-1 text-[11px]">กำไรสุทธิ</p>
+                <p className={`text-lg font-bold ${companyStats.netProfit >= 0 ? 'text-blue-300' : 'text-red-300'}`}>
+                  {formatCurrency(companyStats.netProfit)}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'dashboard' && <Dashboard entries={companyMonthEntries} companyStats={companyStats} />}
+
+        {activeTab === 'entry' && (
+          <>
+            <div className="mb-6 bg-white p-4 rounded-lg shadow-sm border-l-4 border-yellow-400 flex justify-between items-center print:hidden">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800 flex items-center">
+                  <User className="w-5 h-5 mr-2 text-blue-600" />
+                  {currentDriver.name} ({currentDriver.nickname})
+                </h2>
+                <div className="flex items-center space-x-4 text-sm text-gray-600 mt-1">
+                   <p>ทะเบียน: {currentDriver.license}</p>
+                   <span className="text-gray-300">|</span>
+                   <p>ไมล์เริ่มต้น: <span className="font-semibold text-blue-700">{initialOdometer.toLocaleString()}</span></p>
+                   <button onClick={() => { setTempInitialOdometer(initialOdometer); setShowOdometerSettings(true); }} className="text-xs text-blue-500 hover:text-blue-700 underline ml-2">(แก้ไข)</button>
+                </div>
+              </div>
+              <div className="text-right">
+                 <p className="text-sm text-gray-500">สถานะ</p>
+                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">แชร์ข้อมูล Real-time</span>
+              </div>
+            </div>
+
+            {showOdometerSettings && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+                <div className="bg-white p-6 rounded-lg shadow-xl w-80 animate-fade-in-up">
+                  <h3 className="font-bold text-lg mb-4 flex items-center"><Settings className="w-5 h-5 mr-2" /> ตั้งค่าไมล์เริ่มต้น</h3>
+                  <input type="number" value={tempInitialOdometer} onChange={(e) => setTempInitialOdometer(e.target.value)} className="w-full border border-gray-300 rounded p-2 mb-4" placeholder="เลขไมล์เริ่มต้น..." />
+                  <div className="flex justify-end space-x-2">
+                    <button onClick={() => setShowOdometerSettings(false)} className="px-3 py-1 text-gray-600 hover:text-gray-800">ยกเลิก</button>
+                    <button onClick={handleSaveInitialOdometer} className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">บันทึก</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {deleteModalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+                <div className="bg-white p-6 rounded-lg shadow-xl w-96 animate-fade-in-up border-l-4 border-red-500">
+                  <h3 className="font-bold text-lg mb-2 flex items-center text-red-600"><AlertTriangle className="w-6 h-6 mr-2" /> ยืนยันการลบ</h3>
+                  <p className="text-gray-600 mb-6">คุณต้องการลบรายการวันที่ <span className="font-semibold">{itemToDelete ? formatDate(itemToDelete.date) : ''}</span> ใช่หรือไม่?</p>
+                  <div className="flex justify-end space-x-3">
+                    <button onClick={() => { setDeleteModalOpen(false); setItemToDelete(null); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md">ยกเลิก</button>
+                    <button onClick={confirmDeleteAction} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 shadow-sm">ลบรายการ</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {previewImage && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80" onClick={() => setPreviewImage(null)}>
+                <div className="relative max-w-3xl max-h-full p-4">
+                  <img src={previewImage} alt="Receipt Preview" className="max-h-[90vh] rounded-lg shadow-2xl" />
+                  <button className="absolute top-0 right-0 m-4 text-white hover:text-gray-300" onClick={() => setPreviewImage(null)}><X className="w-8 h-8" /></button>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                <Card className="p-4 border-l-4 border-blue-500">
+                  <div className="flex items-center justify-between">
+                    <div><p className="text-xs text-gray-500">จำนวนเที่ยว</p><p className="text-xl font-bold text-gray-800">{totals.trips}</p></div>
+                    <Truck className="text-blue-200 h-6 w-6" />
+                  </div>
+                </Card>
+                <Card className="p-4 border-l-4 border-cyan-500">
+                  <div className="flex items-center justify-between">
+                    <div><p className="text-xs text-gray-500">รวมค่าน้ำมันรถ</p><p className="text-xl font-bold text-cyan-600">{totals.fuelCost.toLocaleString()}</p></div>
+                    <Fuel className="text-cyan-200 h-6 w-6" />
+                  </div>
+                </Card>
+                <Card className="p-4 border-l-4 border-orange-500">
+                  <div className="flex items-center justify-between">
+                    <div><p className="text-xs text-gray-500">อัตราสิ้นเปลือง</p><p className="text-xl font-bold text-orange-600">{avgConsumption} <span className="text-xs text-gray-400 font-normal">กม./ลิตร</span></p></div>
+                    <Gauge className="text-orange-200 h-6 w-6" />
+                  </div>
+                </Card>
+                <Card className="p-4 border-l-4 border-purple-500">
+                  <div className="flex items-center justify-between">
+                    <div><p className="text-xs text-gray-500">รวมค่าขนส่ง(รถ)</p><p className="text-xl font-bold text-purple-600">{totals.transportPrice.toLocaleString()}</p></div>
+                    <Package className="text-purple-200 h-6 w-6" />
+                  </div>
+                </Card>
+                <Card className="p-4 border-l-4 border-green-500">
+                  <div className="flex items-center justify-between">
+                    <div><p className="text-xs text-gray-500">รายรับ (ค่าเที่ยว)</p><p className="text-xl font-bold text-green-600">{totals.tripPay.toLocaleString()}</p></div>
+                    <TrendingUp className="text-green-200 h-6 w-6" />
+                  </div>
+                </Card>
+                <Card className="p-4 border-l-4 border-indigo-500">
+                  <div className="flex items-center justify-between">
+                    <div><p className="text-xs text-gray-500">คงเหลือสุทธิ (คนขับ)</p><p className="text-xl font-bold text-indigo-700">{driverNetPay.toLocaleString()}</p></div>
+                    <Save className="text-indigo-200 h-6 w-6" />
+                  </div>
+                </Card>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-1 space-y-6">
+                   <Card className="p-5">
+                    <h3 className="font-semibold text-gray-800 mb-4 flex items-center"><FileText className="w-5 h-5 mr-2 text-blue-600" /> ข้อมูลหัวบิล</h3>
+                    <div className="space-y-4">
+                      <InputGroup label="ชื่อบริษัท/หจก." name="companyName" value={headerInfo.companyName} onChange={handleHeaderChange} />
+                      <InputGroup label="ที่อยู่" name="address" value={headerInfo.address} onChange={handleHeaderChange} />
+                      <div className="flex flex-col w-full">
+                        <label className="text-sm font-medium text-gray-700 mb-1 flex items-center"><Calendar className="w-4 h-4 mr-1 text-blue-500" /> เดือน</label>
+                        <div className="flex space-x-2">
+                          <select className="border border-gray-300 rounded-md px-3 py-2 w-2/3 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white" value={headerInfo.month} onChange={(e) => handleMonthChange('month', e.target.value)}>
+                             {THAI_MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+                          </select>
+                          <input type="number" className="border border-gray-300 rounded-md px-3 py-2 w-1/3 focus:ring-2 focus:ring-blue-500 focus:outline-none" value={headerInfo.year} onChange={(e) => handleMonthChange('year', e.target.value)} placeholder="พ.ศ." />
+                        </div>
+                      </div>
+                      <InputGroup label="ทะเบียนรถ" name="licensePlate" value={headerInfo.licensePlate} onChange={handleHeaderChange} placeholder="71-xxxx" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <InputGroup label="เงินเดือน" name="salary" type="number" value={headerInfo.salary} onChange={handleHeaderChange} placeholder="0" icon={<Wallet className="w-4 h-4" />} />
+                        <InputGroup label="ประกันสังคม" name="socialSecurity" type="number" value={headerInfo.socialSecurity} onChange={handleHeaderChange} placeholder="0" icon={<ShieldCheck className="w-4 h-4" />} />
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className={`p-5 border-2 ${isEditing ? 'bg-yellow-50 border-yellow-300' : 'bg-blue-50 border-blue-100'}`}>
+                     <h3 className={`font-semibold mb-4 flex items-center justify-between ${isEditing ? 'text-yellow-800' : 'text-blue-800'}`}>
+                      <span className="flex items-center">
+                        {isEditing ? <Pencil className="w-5 h-5 mr-2" /> : <Plus className="w-5 h-5 mr-2" />}
+                        {isEditing ? 'แก้ไขรายการ' : `เพิ่มรายการใหม่ (${currentDriver.nickname})`}
+                      </span>
+                      {isEditing && <button onClick={handleCancelEdit} className="text-sm text-gray-500 hover:text-gray-800 flex items-center"><X className="w-4 h-4 mr-1" /> ยกเลิก</button>}
+                    </h3>
+                    <form onSubmit={handleSubmit} className="space-y-3">
+                      <InputGroup label="วันที่" type="date" name="date" value={formData.date} onChange={handleInputChange} />
+                      <div className="bg-white p-3 rounded-md border border-gray-200 shadow-sm">
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center"><Calculator className="w-4 h-4 mr-1 text-blue-500" /> คำนวณระยะทาง</h4>
+                        <div className="grid grid-cols-3 gap-2 items-end">
+                          <InputGroup label="ไมล์ต้น" name="odometerStart" type="number" value={formData.odometerStart} onChange={handleOdometerStartChange} placeholder="0" />
+                          <InputGroup label="ไมล์ปลาย" name="odometerEnd" type="number" value={formData.odometerEnd} onChange={handleOdometerEndChange} placeholder="ระบุ..." />
+                          <InputGroup label="ระยะ (km)" name="distance" type="number" value={formData.distance} onChange={handleDistanceChange} placeholder="0" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                         <InputGroup label="ค่าน้ำมัน (บาท)" name="fuelCost" type="number" value={formData.fuelCost} onChange={handleInputChange} placeholder="0" />
+                         <InputGroup label="น้ำมัน (ลิตร)" name="fuelLitres" type="number" step="0.01" value={formData.fuelLitres} onChange={handleInputChange} placeholder="0" />
+                      </div>
+                      <div className="flex flex-col">
+                        <label className="text-sm font-medium text-gray-700 mb-1 flex items-center"><ImageIcon className="w-4 h-4 mr-1 text-blue-500" /> รูปสลิป/บิล</label>
+                        <div className="flex items-center space-x-2">
+                          <label className="flex-1 cursor-pointer bg-white border border-gray-300 rounded-md px-3 py-2 flex items-center justify-center hover:bg-gray-50 transition-colors text-sm text-gray-600">
+                            <Upload className="w-4 h-4 mr-2" /> เลือกรูปภาพ
+                            <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                          </label>
+                          {formData.receiptImage && <button type="button" onClick={() => setPreviewImage(formData.receiptImage)} className="p-2 bg-blue-100 text-blue-600 rounded-md"><Eye className="w-4 h-4" /></button>}
+                        </div>
+                      </div>
+                      <div className="space-y-1" ref={productDropdownRef}>
+                         <label className="text-sm font-medium text-gray-700">สินค้า</label>
+                         <div className="relative">
+                           <InputGroup name="product" value={formData.product} onChange={handleInputChange} onFocus={handleProductFocus} placeholder="พิมพ์เพื่อค้นหา..." icon={<ChevronDown className="w-4 h-4" />} />
+                           {showProductDropdown && (
+                             <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto animate-fade-in-up">
+                               {filteredCategories.map(cat => <div key={cat} onClick={() => handleSelectCategory(cat)} className="px-4 py-2 hover:bg-blue-50 cursor-pointer text-sm text-gray-700 flex justify-between items-center">{cat} {formData.product === cat && <Check className="w-3 h-3 text-blue-500" />}</div>)}
+                               {formData.product && !categories.some(c => c.toLowerCase() === formData.product.toLowerCase()) && <div onClick={() => handleAddNewCategory(formData.product)} className="px-4 py-2 bg-gray-50 hover:bg-green-50 cursor-pointer text-sm text-green-700 font-medium border-t border-gray-200 flex items-center"><Plus className="w-3 h-3 mr-2" /> เพิ่ม "{formData.product}"</div>}
+                             </div>
+                           )}
+                         </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                         <InputGroup label="น้ำหนัก" name="weight" value={formData.weight} onChange={handleInputChange} placeholder="เช่น 30,000" />
+                         <div>
+                           <InputGroup label="ค่าขนส่ง" name="transportPrice" type="number" value={formData.transportPrice} onChange={handleInputChange} placeholder="0" />
+                         </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                         <div className="space-y-1" ref={originDropdownRef}>
+                           <label className="text-sm font-medium text-gray-700">ต้นทาง</label>
+                           <div className="relative">
+                             <InputGroup name="origin" value={formData.origin} onChange={handleInputChange} onFocus={handleOriginFocus} placeholder="ระบุต้นทาง..." icon={<MapPin className="w-4 h-4" />} />
+                             {showOriginDropdown && (
+                               <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                 {filteredOrigins.map(loc => <div key={`org-${loc}`} onClick={() => handleSelectOrigin(loc)} className="px-4 py-2 hover:bg-blue-50 cursor-pointer text-sm text-gray-700">{loc}</div>)}
+                                 {formData.origin && !locations.some(l => l.toLowerCase() === formData.origin.toLowerCase()) && <div onClick={() => handleAddNewLocation(formData.origin, 'origin')} className="px-4 py-2 bg-gray-50 hover:bg-green-50 cursor-pointer text-sm text-green-700"><Plus className="w-3 h-3 mr-2 inline" /> เพิ่ม "{formData.origin}"</div>}
+                               </div>
+                             )}
+                           </div>
+                         </div>
+                         <div className="space-y-1" ref={destinationDropdownRef}>
+                           <label className="text-sm font-medium text-gray-700">ปลายทาง</label>
+                           <div className="relative">
+                             <InputGroup name="destination" value={formData.destination} onChange={handleInputChange} onFocus={handleDestinationFocus} placeholder="ระบุปลายทาง..." icon={<MapPin className="w-4 h-4" />} />
+                             {showDestinationDropdown && (
+                               <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                 {filteredDestinations.map(loc => <div key={`dest-${loc}`} onClick={() => handleSelectDestination(loc)} className="px-4 py-2 hover:bg-blue-50 cursor-pointer text-sm text-gray-700">{loc}</div>)}
+                                 {formData.destination && !locations.some(l => l.toLowerCase() === formData.destination.toLowerCase()) && <div onClick={() => handleAddNewLocation(formData.destination, 'destination')} className="px-4 py-2 bg-gray-50 hover:bg-green-50 cursor-pointer text-sm text-green-700"><Plus className="w-3 h-3 mr-2 inline" /> เพิ่ม "{formData.destination}"</div>}
+                               </div>
+                             )}
+                           </div>
+                         </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                         <InputGroup label="รายการอื่นๆ" name="otherItem" value={formData.otherItem} onChange={handleInputChange} placeholder="เช่น ค่าซ่อม" />
+                         <InputGroup label="ค่าอื่นๆ (บาท)" name="otherCost" type="number" value={formData.otherCost} onChange={handleInputChange} placeholder="0" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <InputGroup label="ค่าเที่ยว (บาท)" name="tripPay" type="number" value={formData.tripPay} onChange={handleInputChange} placeholder="0" />
+                        <InputGroup label="เบิก/หัก (บาท)" name="withdraw" type="number" value={formData.withdraw} onChange={handleInputChange} placeholder="0" />
+                      </div>
+                      <InputGroup label="หมายเหตุ" name="remarks" value={formData.remarks} onChange={handleInputChange} placeholder="รายละเอียดอื่นๆ" />
+                      <button type="submit" className={`w-full mt-4 font-semibold py-2 px-4 rounded-md shadow transition-colors flex justify-center items-center ${isEditing ? 'bg-yellow-500 hover:bg-yellow-600 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>
+                        <Save className="w-4 h-4 mr-2" /> {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกรายการ'}
+                      </button>
+                    </form>
+                  </Card>
+                </div>
+
+                <div className="lg:col-span-2">
+                  <Card className="overflow-hidden">
+                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                      <h3 className="font-semibold text-gray-800">รายการเดินรถ: {currentDriver.name}</h3>
+                      <div className="flex space-x-2">
+                        <input 
+                          type="file" 
+                          ref={fileInputRef} 
+                          className="hidden" 
+                          accept=".csv"
+                          onChange={handleFileImport}
+                        />
+                        <button onClick={handleImportClick} className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded flex items-center transition-colors">
+                          <FileInput className="w-4 h-4 mr-1" /> Import CSV
+                        </button>
+                        <button onClick={handleExportCSV} className="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded flex items-center transition-colors">
+                          <Download className="w-4 h-4 mr-1" /> CSV (Excel)
+                        </button>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b">
+                          <tr>
+                            <th className="px-2 py-3">วันที่</th>
+                            <th className="px-2 py-3">สินค้า</th>
+                            <th className="px-2 py-3">เส้นทาง</th>
+                            <th className="px-2 py-3 text-center">ไมล์ต้น/ปลาย</th>
+                            <th className="px-2 py-3 text-right">ค่าน้ำมัน</th>
+                            <th className="px-2 py-3 text-right">ค่าเที่ยว</th>
+                            <th className="px-2 py-3 text-right">เบิก</th>
+                            <th className="px-2 py-3 text-right">อื่นๆ</th>
+                            <th className="px-2 py-3 text-center">รูป</th>
+                            <th className="px-2 py-3 text-center">จัดการ</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {currentDriverEntries.length === 0 ? (
+                             <tr><td colSpan="10" className="text-center py-8 text-gray-400">ยังไม่มีข้อมูลรายการสำหรับเดือนนี้</td></tr>
+                          ) : (
+                            currentDriverEntries.map((entry) => (
+                              <tr key={entry.id} className={`bg-white border-b hover:bg-gray-50 ${isEditing && editId === entry.id ? 'bg-yellow-50' : ''}`}>
+                                <td className="px-2 py-3 whitespace-nowrap font-medium text-gray-900">{formatDate(entry.date)}</td>
+                                <td className="px-2 py-3">{entry.product || "-"}</td>
+                                <td className="px-2 py-3">{entry.origin} <span className="text-gray-400">→</span> {entry.destination}</td>
+                                <td className="px-2 py-3 text-center text-gray-500">{entry.odometerStart}/{entry.odometerEnd}</td>
+                                <td className="px-2 py-3 text-right font-medium text-blue-600">{entry.fuelCost > 0 ? entry.fuelCost.toLocaleString() : "-"}</td>
+                                <td className="px-2 py-3 text-right font-medium text-green-600">{entry.tripPay > 0 ? entry.tripPay.toLocaleString() : "-"}</td>
+                                <td className="px-2 py-3 text-right font-medium text-red-500">{entry.withdraw > 0 ? entry.withdraw.toLocaleString() : "-"}</td>
+                                <td className="px-2 py-3 text-right">{entry.otherCost > 0 ? <span className="text-gray-500">{entry.otherCost.toLocaleString()}</span> : "-"}</td>
+                                <td className="px-2 py-3 text-center">{entry.receiptImage ? <button onClick={() => setPreviewImage(entry.receiptImage)} className="text-blue-500 hover:text-blue-700"><ImageIcon className="w-4 h-4" /></button> : "-"}</td>
+                                <td className="px-2 py-3 text-center">
+                                  <div className="flex justify-center space-x-2">
+                                    <button onClick={() => handleEdit(entry)} className="text-blue-400 hover:text-blue-600"><Pencil className="w-4 h-4" /></button>
+                                    <button onClick={() => initiateDelete(entry)} className="text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                        {currentDriverEntries.length > 0 && (
+                          <tfoot className="bg-gray-100 font-semibold text-gray-900">
+                            <tr>
+                              <td colSpan="4" className="px-2 py-3 text-right">รวมยอดเดือนนี้</td>
+                              <td className="px-2 py-3 text-right text-blue-700">{totals.fuelCost.toLocaleString()}</td>
+                              <td className="px-2 py-3 text-right text-green-700">{totals.tripPay.toLocaleString()}</td>
+                              <td className="px-2 py-3 text-right text-red-700">{totals.withdraw.toLocaleString()}</td>
+                               <td className="px-2 py-3 text-right text-gray-700">{totals.otherCost > 0 ? totals.otherCost.toLocaleString() : "-"}</td>
+                              <td colSpan="2"></td>
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'bill' && (
+          <div className="flex flex-col items-center">
+            <div className="w-full max-w-4xl mb-6 flex flex-col md:flex-row justify-between items-center bg-white p-4 rounded-lg shadow-sm border border-gray-200 print:hidden">
+              <div className="flex items-center space-x-4 mb-3 md:mb-0 w-full md:w-auto">
+                <span className="text-gray-600 font-medium whitespace-nowrap">ตั้งค่าใบจ่ายเงิน:</span>
+                <div className="flex space-x-2 w-full md:w-auto">
+                  <select className="border border-gray-300 rounded-md px-3 py-1.5 bg-gray-50 text-sm" value={headerInfo.month} onChange={(e) => handleMonthChange('month', e.target.value)}>{THAI_MONTHS.map(m => <option key={m} value={m}>{m}</option>)}</select>
+                  <input type="number" className="border border-gray-300 rounded-md px-3 py-1.5 w-20 bg-gray-50 text-sm" value={headerInfo.year} onChange={(e) => handleMonthChange('year', e.target.value)} />
+                  <input type="text" placeholder="แก้ไขที่อยู่..." className="border border-gray-300 rounded-md px-3 py-1.5 w-full md:w-64 bg-gray-50 text-sm" value={headerInfo.address} onChange={(e) => handleHeaderChange({target: {name: 'address', value: e.target.value}})} />
+                </div>
+              </div>
+              <div className="flex space-x-2 mt-3 md:mt-0">
+                <button 
+                  onClick={handleDownloadPNG} 
+                  disabled={isDownloadingPNG} 
+                  className={`px-4 py-2 rounded-md shadow border font-medium flex items-center transition-colors ${isDownloadingPNG ? 'bg-gray-200 text-gray-500' : 'bg-white hover:bg-gray-50 text-gray-800 border-gray-300'}`}
+                >
+                  {isDownloadingPNG ? 'กำลังบันทึก...' : <><ImageIcon className="w-5 h-5 mr-2 text-pink-500" /> โหลดรูป PNG</>}
+                </button>
+                <button 
+                  onClick={handleDownloadPDF} 
+                  disabled={isDownloadingPDF} 
+                  className={`px-6 py-2 rounded-md shadow flex items-center font-medium text-white transition-colors ${isDownloadingPDF ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-700 hover:bg-blue-800'}`}
+                >
+                  {isDownloadingPDF ? 'กำลังสร้าง PDF...' : <><Download className="w-5 h-5 mr-2" /> ดาวน์โหลด PDF</>}
+                </button>
+              </div>
+            </div>
+
+            <div className="shadow-2xl print:shadow-none overflow-x-auto w-full flex justify-center">
+              <div id="invoice-content" className="bg-white w-[210mm] min-h-[297mm] p-[15mm] print:p-10 box-border">
+                <div className="text-center mb-8">
+                  <h1 className="text-3xl font-bold mb-1 tracking-wide">หจก.ณสิริทรัพย์ การเกษตร</h1>
+                  <p className="text-sm text-gray-700 mb-3">{headerInfo.address}</p>
+                  <div className="inline-block border-b-2 border-black pb-1 mb-6"><h2 className="text-xl font-semibold">ใบจ่ายเงินเดือนรถพ่วง</h2></div>
+                  <div className="flex justify-between items-end mt-2 text-sm px-2">
+                    <div className="text-left space-y-1.5">
+                      <p><span className="font-semibold w-24 inline-block">คนขับ:</span> {currentDriver.name}</p>
+                      <p><span className="font-semibold w-24 inline-block">ทะเบียน:</span> {headerInfo.licensePlate}</p>
+                      <p><span className="font-semibold w-24 inline-block">เลขบัญชี:</span> {currentDriver.bank || '-'}</p>
+                    </div>
+                    <div className="text-right space-y-1.5">
+                      <p><span className="font-semibold">ประจำเดือน:</span> {headerInfo.month} {headerInfo.year}</p>
+                      <p><span className="font-semibold">วันที่ออกเอกสาร:</span> {new Date().toLocaleDateString('th-TH')}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <table className="w-full text-[11px] border-collapse border border-black mb-6">
+                  <thead>
+                    <tr className="bg-gray-100 text-center font-semibold">
+                      <th className="border border-black px-1 py-2 w-8">ลำดับ</th>
+                      <th className="border border-black px-1 py-2">วัน/เดือน/ปี - สินค้า</th>
+                      <th className="border border-black px-1 py-2">ต้นทาง</th>
+                      <th className="border border-black px-1 py-2">ปลายทาง</th>
+                      <th className="border border-black px-1 py-2 w-20">ค่าเที่ยว</th>
+                      <th className="border border-black px-1 py-2 w-20">เบิก</th>
+                      <th className="border border-black px-1 py-2">หมายเหตุ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {billEntries.length === 0 ? (
+                       <tr><td colSpan="7" className="text-center py-4 text-gray-400">ไม่มีรายการในเดือนนี้</td></tr>
+                    ) : (
+                      billEntries.map((entry, index) => (
+                        <tr key={entry.id} className="text-center align-top break-inside-avoid">
+                          <td className="border border-black px-1 py-1.5">{index + 1}</td>
+                          <td className="border border-black px-1 py-1.5 text-left">
+                            <span className="font-bold text-[10px]">{formatDate(entry.date)}</span><br/>
+                            {entry.product || "-"}
+                          </td>
+                          <td className="border border-black px-1 py-1.5">{entry.origin}</td>
+                          <td className="border border-black px-1 py-1.5">{entry.destination}</td>
+                          <td className="border border-black px-1 py-1.5 text-right font-medium">{entry.tripPay ? entry.tripPay.toLocaleString() : "-"}</td>
+                          <td className="border border-black px-1 py-1.5 text-right text-red-600">{entry.withdraw ? entry.withdraw.toLocaleString() : "-"}</td>
+                          <td className="border border-black px-1 py-1.5 text-left">{entry.remarks}</td>
+                        </tr>
+                      ))
+                    )}
+                    {billEntries.length < 18 && Array.from({ length: 18 - billEntries.length }).map((_, i) => (
+                      <tr key={`empty-${i}`} className="h-8">
+                        <td className="border border-black"></td><td className="border border-black"></td><td className="border border-black"></td><td className="border border-black"></td><td className="border border-black"></td><td className="border border-black"></td><td className="border border-black"></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="font-bold bg-gray-100">
+                      <td colSpan="4" className="border border-black px-4 py-2 text-right uppercase">Total / รวมเป็นเงิน</td>
+                      <td className="border border-black px-1 py-2 text-right">{totals.tripPay.toLocaleString()}</td>
+                      <td className="border border-black px-1 py-2 text-right text-red-700">{totals.withdraw.toLocaleString()}</td>
+                      <td className="border border-black bg-gray-200"></td>
+                    </tr>
+                  </tfoot>
+                </table>
+
+                <div className="flex justify-end mt-4 break-inside-avoid">
+                  <div className="w-80 border-2 border-black p-4 bg-gray-50">
+                    <div className="flex justify-between mb-2 text-sm"><span>รายรับรวม (ค่าเที่ยว):</span><span className="font-bold">{totals.tripPay.toLocaleString()} บาท</span></div>
+                    <div className="flex justify-between mb-2 text-sm text-green-700"><span>+ เงินเดือน:</span><span>{salary.toLocaleString()} บาท</span></div>
+                    <div className="flex justify-between mb-2 text-sm font-semibold border-t border-gray-300 pt-2"><span>รวมรายรับทั้งหมด:</span><span>{totalGrossIncome.toLocaleString()} บาท</span></div>
+                    <div className="flex justify-between mb-2 text-sm text-red-600 mt-2"><span>- หักเบิก:</span><span>{totals.withdraw.toLocaleString()} บาท</span></div>
+                    <div className="flex justify-between mb-2 text-sm text-red-600"><span>- หักประกันสังคม:</span><span>{socialSecurity.toLocaleString()} บาท</span></div>
+                    <div className="border-t-2 border-black my-2"></div>
+                    <div className="flex justify-between text-xl font-bold"><span>คงเหลือสุทธิ:</span><span className="text-blue-900 border-b-4 border-double border-blue-900">{driverNetPay.toLocaleString()} บาท</span></div>
+                  </div>
+                </div>
+
+                <div className="mt-16 flex justify-between px-16 text-center text-sm font-medium break-inside-avoid">
+                  <div>
+                    <div className="border-b border-black w-48 mb-2 mx-auto"></div>
+                    <p>ผู้จ่ายเงิน / Authorized By</p>
+                  </div>
+                  <div>
+                    <div className="border-b border-black w-48 mb-2 mx-auto"></div>
+                    <p>ผู้รับเงิน / Recipient</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+      <style>{`
+        @media print { 
+          @page { size: A4; margin: 0; } 
+          body { -webkit-print-color-adjust: exact; background: white; } 
+          nav, button, select, input, .print\\:hidden { display: none !important; } 
+          main { padding: 0 !important; margin: 0 !important; max-width: none !important; }
+          #invoice-content { border: none !important; box-shadow: none !important; padding: 15mm !important; }
+        } 
+        #invoice-content {
+          font-family: 'Sarabun', sans-serif;
+          line-height: 1.4;
+          background-color: white;
+        }
+        .animate-fade-in-up { animation: fade-in-up 0.2s ease-out forwards; } 
+        @keyframes fade-in-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        * { font-variant-ligatures: none; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        .break-inside-avoid { break-inside: avoid; }
+      `}</style>
+    </div>
+  );
+}

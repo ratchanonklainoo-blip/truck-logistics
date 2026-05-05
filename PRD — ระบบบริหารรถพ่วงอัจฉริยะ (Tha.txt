@@ -1,0 +1,407 @@
+PRD v5 — ระบบบริหารรถพ่วงอัจฉริยะ (Operations-first)
+
+สำหรับ หจก.ณสิริทรัพย์ การเกษตร
+
+Status: Build-ready
+Owner: Bank
+Primary UI: ภาษาไทย
+Architecture: Job-centric + Finance-centric
+
+1. Product Vision
+
+สร้างระบบ “ศูนย์ควบคุมรถพ่วง” ที่ช่วย:
+
+หางาน
+assign งาน
+คุมคนขับ
+คุมค่าน้ำมัน
+คุมเงินสด
+ปิดงาน
+ปิดเงินเดือน
+
+โดย owner ไม่ต้องกรอกข้อมูลเอง
+
+2. Operating Model (Real Workflow)
+งานเข้า
+↓
+Assign คนขับ
+↓
+เริ่มงาน
+↓
+เติมน้ำมัน
+↓
+วิ่งงาน
+↓
+ส่งงาน
+↓
+ลูกค้าชำระเงิน
+↓
+ปิดงาน
+↓
+คิดค่ารอบ
+↓
+ปิดเงินเดือน
+3. User Roles
+Bank — Operations Manager
+
+สิทธิ์:
+
+สร้างงาน
+หางาน
+ใช้ AI ช่วยค้นหางาน
+assign คนขับ
+approve ข้อมูล
+วิเคราะห์กำไร
+ปิดงาน
+ปิดเงินเดือน
+แม่ — Finance
+
+สิทธิ์:
+
+approve payment
+จ่ายน้ำมัน
+mark paid
+ปิดงานร่วมกับ Bank
+ดู cashflow
+Driver
+
+สิทธิ์:
+
+รับงาน
+ส่งรูป
+ส่งไมล์
+ขอเบิก
+
+ผ่าน LINE
+
+4. Left Sidebar (Thai-first)
+ศูนย์ควบคุม
+งานเข้า
+ค้นหางานใหม่
+จัดรถและคนขับ
+เติมน้ำมัน
+เที่ยววิ่ง
+ค่าใช้จ่าย
+ลูกค้า
+คนขับ
+เงินเดือนและค่ารอบ
+รายงาน
+แจ้งเตือน
+ตั้งค่าระบบ
+5. Module — งานเข้า (Job Management)
+
+งานทุกงานต้องถูกสร้างก่อนวิ่ง
+
+Fields:
+
+job_id
+วันที่งาน
+ลูกค้า
+ต้นทาง
+ปลายทาง
+สินค้า
+น้ำหนัก
+ราคาขาย
+source
+payment_type
+payment_due_date
+assigned_driver_id
+status
+source
+
+ค่าที่รองรับ:
+
+ฉันหาเอง
+แม่หา
+คนขับหา
+AI หา
+payment_type
+
+ค่าที่รองรับ:
+
+จ่ายก่อนเริ่มงาน
+จ่ายตอนปิดงาน
+เครดิต
+credit case
+
+ถ้า payment_type = เครดิต
+
+required:
+
+payment_due_date
+6. Module — AI หางาน
+
+Bank สามารถใช้ AI ค้นหางานใหม่
+
+Sources:
+
+Facebook groups
+LINE groups
+เว็บประกาศงานขนส่ง
+network contacts
+
+System save lead:
+
+lead_id
+customer_name
+route
+estimated_price
+contact
+confidence
+status
+
+Status:
+
+ใหม่
+กำลังติดต่อ
+เสนอราคาแล้ว
+ได้งาน
+ไม่ได้งาน
+7. Module — Assign งาน
+
+Bank หรือแม่ assign
+
+Workflow:
+
+งานใหม่
+↓
+รอจัดรถ
+↓
+จัดรถแล้ว
+↓
+คนขับรับงาน
+↓
+กำลังวิ่ง
+↓
+ส่งงานแล้ว
+↓
+รอรับเงิน
+↓
+ปิดงาน
+Job source
+
+Field:
+
+assigned_by
+8. Module — เติมน้ำมัน
+
+Reality workflow:
+
+Driver ส่ง:
+
+รูปหัวจ่าย
+รูปการจ่ายเงิน
+รูปเลขไมล์
+OCR Extract
+
+จากภาพ:
+
+station_name
+amount_baht
+fuel_liters
+price_per_liter
+odometer
+payment_method
+Approval Workflow
+คนขับส่ง
+↓
+AI อ่าน
+↓
+Bank ตรวจ
+↓
+แม่จ่าย
+↓
+ระบบบันทึก
+Fuel Status
+รอข้อมูล
+รอตรวจสอบ
+รอจ่ายเงิน
+จ่ายแล้ว
+ผิดปกติ
+9. Module — ลูกค้าชำระเงิน
+
+Rules:
+
+Case 1
+
+จ่ายก่อนเริ่มงาน
+
+status:
+
+ชำระแล้ว
+Case 2
+
+จ่ายเมื่อปิดงาน
+
+status:
+
+รอรับเงิน
+Case 3
+
+เครดิต
+
+status:
+
+เครดิต
+
+required:
+
+due date
+
+Overdue Alert
+
+ถ้าเลยกำหนด:
+
+alert:
+
+ลูกค้าค้างชำระ
+10. Module — เบิกเงินคนขับ
+
+Driver ขอได้ตลอด
+
+ผ่าน LINE
+
+Fields:
+
+request_id
+driver_id
+amount
+reason
+date
+status
+
+Status:
+
+รออนุมัติ
+อนุมัติ
+ปฏิเสธ
+จ่ายแล้ว
+Monthly limit
+
+Field:
+
+monthly_limit
+
+value configurable later
+
+11. Module — ปิดงาน
+
+Who can close:
+
+Bank
+แม่
+
+Conditions:
+
+ต้องครบ:
+
+✅ assign driver
+✅ trip complete
+✅ fuel recorded
+✅ customer paid OR credit created
+
+then:
+
+ปิดงานได้
+12. Module — เที่ยววิ่ง
+
+Database:
+
+trip_id
+job_id
+driver_id
+odometer_start
+odometer_end
+distance
+fuel_cost
+trip_pay
+status
+13. Business Logic
+ค่ารอบ
+
+tripPay=transportPrice×0.10
+
+ระยะทาง
+
+distance=odometerEnd−odometerStart
+
+กำไรต่อ job
+
+jobProfit=sellingPrice−fuelCost−tripPay−expenses
+
+14. Dashboard — ศูนย์ควบคุม
+
+Cards:
+
+งานวันนี้
+รถกำลังวิ่ง
+รถว่าง
+รอเติมน้ำมัน
+รอรับเงิน
+เงินสดวันนี้
+กำไรวันนี้
+ลูกค้าค้างชำระ
+15. Alerts
+Fuel anomaly
+
++20%
+
+Overdue customer
+
+เลย due date
+
+Driver advance over limit
+Job low margin
+
+profit ต่ำกว่าค่าเฉลี่ย
+
+16. Tech Stack
+
+Frontend:
+
+Next.js
+
+Backend:
+
+Supabase
+
+Automation:
+
+n8n
+
+Messaging:
+
+LINE
+
+AI:
+
+OpenAI
+
+Deploy:
+
+Vercel
+17. MVP Build Priority
+
+Sprint 1:
+
+งานเข้า
+assign
+trips
+dashboard
+
+Sprint 2:
+
+fuel OCR
+finance workflow
+
+Sprint 3:
+
+customer payment
+
+Sprint 4:
+
+AI lead finder
+
+Sprint 5:
+
+payroll + AI alerts
