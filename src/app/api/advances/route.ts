@@ -16,7 +16,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   let query = supabase
     .from('advance_requests')
-    .select(`*, driver:drivers(id, name, nickname)`)
+    .select('*')
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
@@ -27,7 +27,21 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ data });
+  // Fetch drivers separately (no FK constraint)
+  const driverIds = [...new Set((data || []).map((a: { driver_id: string }) => a.driver_id).filter(Boolean))];
+  let driversMap: Record<string, { id: string; name: string; nickname: string }> = {};
+  if (driverIds.length > 0) {
+    const { data: drs } = await supabase
+      .from('drivers').select('id, name, nickname').in('id', driverIds);
+    (drs || []).forEach((d: { id: string; name: string; nickname: string }) => { driversMap[d.id] = d; });
+  }
+
+  const enriched = (data || []).map((a: Record<string, unknown>) => ({
+    ...a,
+    driver: driversMap[a.driver_id as string] || null,
+  }));
+
+  return NextResponse.json({ data: enriched });
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {

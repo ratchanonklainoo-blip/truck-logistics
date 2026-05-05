@@ -17,7 +17,7 @@ const STATUS_CONFIG = {
 };
 
 export default function AdvancesPage() {
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const [advances, setAdvances]       = useState<AdvanceRequest[]>([]);
   const [drivers, setDrivers]         = useState<Driver[]>([]);
   const [loading, setLoading]         = useState(true);
@@ -28,17 +28,31 @@ export default function AdvancesPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [{ data: adv }, { data: dr }] = await Promise.all([
+    const [{ data: adv, error: advErr }, { data: dr }] = await Promise.all([
       supabase
         .from('advance_requests')
-        .select('*, driver:drivers(id, name, nickname)')
+        .select('*')
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .limit(200),
       supabase.from('drivers').select('*').is('deleted_at', null).eq('is_active', true),
     ]);
-    setAdvances(adv || []);
-    setDrivers(dr || []);
+
+    if (advErr) console.error('[Advances] load error:', advErr.message);
+
+    const drList = dr || [];
+    setDrivers(drList);
+
+    // Merge driver info manually (no FK join)
+    const drMap: Record<string, Driver> = {};
+    drList.forEach(d => { drMap[d.id] = d; });
+
+    const enriched = (adv || []).map(a => ({
+      ...a,
+      driver: drMap[a.driver_id] || undefined,
+    }));
+
+    setAdvances(enriched as AdvanceRequest[]);
     setLoading(false);
   }, []);
 

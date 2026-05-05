@@ -6,9 +6,9 @@
 -- ── fuel_events ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS fuel_events (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  job_id            UUID REFERENCES jobs(id),
-  driver_id         UUID REFERENCES drivers(id) NOT NULL,
-  trip_id           UUID REFERENCES trips(id),
+  job_id            UUID,
+  driver_id         UUID NOT NULL,
+  trip_id           UUID,
   status            TEXT NOT NULL DEFAULT 'waiting_data' CHECK (status IN (
                       'waiting_data', 'waiting_ocr', 'needs_review',
                       'waiting_approval', 'waiting_payment', 'paid'
@@ -26,9 +26,9 @@ CREATE TABLE IF NOT EXISTS fuel_events (
   payment_method      TEXT,
   ocr_confidence      NUMERIC(5,4),
   -- Approval
-  verified_by         UUID REFERENCES users(id),
+  verified_by         UUID,
   verified_at         TIMESTAMPTZ,
-  paid_by             UUID REFERENCES users(id),
+  paid_by             UUID,
   paid_at             TIMESTAMPTZ,
   -- Anomaly
   is_anomaly          BOOLEAN DEFAULT false,
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS fuel_events (
 CREATE TABLE IF NOT EXISTS line_messages (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   line_user_id          TEXT NOT NULL,
-  driver_id             UUID REFERENCES drivers(id),
+  driver_id             UUID,
   message_type          TEXT CHECK (message_type IN ('text', 'image', 'location', 'sticker')),
   content               TEXT,
   image_url             TEXT,
@@ -52,8 +52,8 @@ CREATE TABLE IF NOT EXISTS line_messages (
                           'job_accept', 'unknown'
                         )),
   processed             BOOLEAN DEFAULT false,
-  fuel_event_id         UUID REFERENCES fuel_events(id),
-  advance_request_id    UUID REFERENCES advance_requests(id),
+  fuel_event_id         UUID,
+  advance_request_id    UUID,
   raw_payload           JSONB,
   received_at           TIMESTAMPTZ DEFAULT now(),
   created_at            TIMESTAMPTZ DEFAULT now()
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS line_messages (
 -- ── ocr_results ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS ocr_results (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  fuel_event_id    UUID REFERENCES fuel_events(id),
+  fuel_event_id    UUID,
   image_url        TEXT NOT NULL,
   image_type       TEXT CHECK (image_type IN ('pump', 'payment', 'odometer')),
   raw_response     JSONB,
@@ -76,16 +76,16 @@ CREATE TABLE IF NOT EXISTS ocr_results (
 -- ── advance_requests (create if not exists from Phase 1) ──────
 CREATE TABLE IF NOT EXISTS advance_requests (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  driver_id         UUID REFERENCES drivers(id) NOT NULL,
+  driver_id         UUID NOT NULL,
   amount            NUMERIC(10,2) NOT NULL,
   reason            TEXT,
   status            TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
                       'pending', 'approved', 'rejected', 'paid'
                     )),
   requested_via     TEXT DEFAULT 'line',
-  approved_by       UUID REFERENCES users(id),
+  approved_by       UUID,
   approved_at       TIMESTAMPTZ,
-  paid_by           UUID REFERENCES users(id),
+  paid_by           UUID,
   paid_at           TIMESTAMPTZ,
   month_year        TEXT NOT NULL,
   notes             TEXT,
@@ -129,26 +129,18 @@ ALTER TABLE line_messages      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ocr_results        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE advance_requests   ENABLE ROW LEVEL SECURITY;
 
--- fuel_events: bank + mother can read/write
+-- fuel_events: any authenticated user can read/write
 CREATE POLICY "staff_all_fuel" ON fuel_events
-  FOR ALL USING (
-    auth.uid() IN (SELECT id FROM users WHERE role IN ('bank', 'mother', 'admin') AND is_active = true)
-  );
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
--- line_messages: bank + mother can read (written by service role)
+-- line_messages: any authenticated user can read (written by service role)
 CREATE POLICY "staff_read_line_messages" ON line_messages
-  FOR SELECT USING (
-    auth.uid() IN (SELECT id FROM users WHERE role IN ('bank', 'mother', 'admin') AND is_active = true)
-  );
+  FOR SELECT TO authenticated USING (true);
 
--- ocr_results: bank + mother can read (written by service role)
+-- ocr_results: any authenticated user can read (written by service role)
 CREATE POLICY "staff_read_ocr" ON ocr_results
-  FOR SELECT USING (
-    auth.uid() IN (SELECT id FROM users WHERE role IN ('bank', 'mother', 'admin') AND is_active = true)
-  );
+  FOR SELECT TO authenticated USING (true);
 
--- advance_requests: bank + mother can read/write
+-- advance_requests: any authenticated user can read/write
 CREATE POLICY "staff_all_advances" ON advance_requests
-  FOR ALL USING (
-    auth.uid() IN (SELECT id FROM users WHERE role IN ('bank', 'mother', 'admin') AND is_active = true)
-  );
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
