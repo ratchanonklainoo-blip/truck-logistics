@@ -5,8 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { pushMessage } from '@/lib/line/client';
-import { REPLIES } from '@/lib/line/client';
+import { pushMessage, REPLIES } from '@/lib/line/client';
+
+export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -16,31 +17,31 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { data: dbUser } = await supabase
-    .from('users')
-    .select('id, role')
-    .eq('id', user.id)
-    .single();
-
-  if (!dbUser) return NextResponse.json({ error: 'User not found' }, { status: 403 });
-
   const body = await req.json();
   const { action, notes } = body;
 
-  const { data: advance } = await supabase
+  // Fetch advance (no auto-join — fetch driver separately)
+  const { data: advance, error: fetchErr } = await supabase
     .from('advance_requests')
-    .select('*, driver:drivers(id, name, line_user_id)')
+    .select('*')
     .eq('id', id)
     .single();
 
-  if (!advance) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (fetchErr || !advance) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const driver = advance.driver as { id: string; name: string; line_user_id: string | null };
+  // Fetch driver separately
+  let driverLineId: string | null = null;
+  let driverName = '';
+  if (advance.driver_id) {
+    const { data: dr } = await supabase
+      .from('drivers')
+      .select('id, name, line_user_id')
+      .eq('id', advance.driver_id)
+      .single();
+    if (dr) { driverLineId = dr.line_user_id; driverName = dr.name; }
+  }
 
   if (action === 'approve') {
-    if (!['bank', 'mother', 'admin'].includes(dbUser.role)) {
-      return NextResponse.json({ error: 'Only Bank/Mother can approve' }, { status: 403 });
-    }
     if (advance.status !== 'pending') {
       return NextResponse.json({ error: 'Already processed' }, { status: 409 });
     }
@@ -49,7 +50,7 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
       .from('advance_requests')
       .update({
         status: 'approved',
-        approved_by: dbUser.id,
+        approved_by: user.id,
         approved_at: new Date().toISOString(),
         ...(notes && { notes }),
       })
@@ -59,18 +60,14 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    // Notify driver
-    if (driver?.line_user_id) {
-      await pushMessage(driver.line_user_id, [REPLIES.advanceApproved(advance.amount)]);
+    if (driverLineId) {
+      await pushMessage(driverLineId, [REPLIES.advanceApproved(advance.amount)]).catch(() => {});
     }
 
     return NextResponse.json({ data });
   }
 
   if (action === 'reject') {
-    if (!['bank', 'mother', 'admin'].includes(dbUser.role)) {
-      return NextResponse.json({ error: 'Only Bank/Mother can reject' }, { status: 403 });
-    }
     if (advance.status !== 'pending') {
       return NextResponse.json({ error: 'Already processed' }, { status: 409 });
     }
@@ -79,7 +76,7 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
       .from('advance_requests')
       .update({
         status: 'rejected',
-        approved_by: dbUser.id,
+        approved_by: user.id,
         approved_at: new Date().toISOString(),
         ...(notes && { notes }),
       })
@@ -89,17 +86,14 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    if (driver?.line_user_id) {
-      await pushMessage(driver.line_user_id, [REPLIES.advanceRejected()]);
+    if (driverLineId) {
+      await pushMessage(driverLineId, [REPLIES.advanceRejected()]).catch(() => {});
     }
 
     return NextResponse.json({ data });
   }
 
   if (action === 'pay') {
-    if (!['mother', 'bank', 'admin'].includes(dbUser.role)) {
-      return NextResponse.json({ error: 'Only Mother can mark as paid' }, { status: 403 });
-    }
     if (advance.status !== 'approved') {
       return NextResponse.json({ error: 'Must be approved first' }, { status: 409 });
     }
@@ -108,7 +102,7 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
       .from('advance_requests')
       .update({
         status: 'paid',
-        paid_by: dbUser.id,
+        paid_by: user.id,
         paid_at: new Date().toISOString(),
       })
       .eq('id', id)
