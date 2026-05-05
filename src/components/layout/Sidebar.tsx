@@ -29,8 +29,8 @@ const NAV_ITEMS = [
 
 // Phase badge — shows which features are available
 const PHASE_AVAILABLE = new Set([
-  '/dashboard', '/trips', '/customers', '/drivers', '/payslip', '/settings',
-  '/fuel', '/advances',  // Phase 2 — now available
+  '/dashboard', '/trips', '/jobs', '/customers', '/drivers', '/payslip', '/settings',
+  '/fuel', '/advances', '/expenses', '/payroll', '/reports', '/alerts',
 ]);
 
 interface SidebarProps {
@@ -85,7 +85,7 @@ export default function Sidebar({ userEmail }: SidebarProps) {
               {isActive && <ChevronRight className="w-3 h-3" />}
               {!available && (
                 <span className="text-[9px] bg-white/20 rounded px-1 py-0.5 font-medium">
-                  P2
+                  เร็วๆ นี้
                 </span>
               )}
             </Link>
