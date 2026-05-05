@@ -276,7 +276,9 @@ export default function PayslipPage() {
           >
             <style>{`
               @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap');
-              #payslip-content * { font-family: 'Sarabun', sans-serif !important; line-height: 1.25 !important; }
+              #payslip-content * { font-family: 'Sarabun', sans-serif !important; }
+              #payslip-content table td,
+              #payslip-content table th { line-height: 1.4 !important; }
             `}</style>
 
             {/* ── Header ── */}
@@ -315,10 +317,9 @@ export default function PayslipPage() {
                 <tr style={{ backgroundColor: '#1E3A5F', color: '#fff' }}>
                   {['#','วันที่','สินค้า','ต้นทาง','ปลายทาง','ค่าเที่ยว','เบิก','หมายเหตุ'].map((h, i) => (
                     <th key={h} style={{
-                      border: '1px solid #374151', padding: '4px 4px',
-                      fontWeight: 700, fontSize: '10px',
+                      border: '1px solid #374151', padding: '5px 4px',
+                      fontWeight: 700, fontSize: '10.5px',
                       textAlign: i === 5 || i === 6 ? 'right' : 'center',
-                      overflow: 'hidden', whiteSpace: 'nowrap',
                     }}>{h}</th>
                   ))}
                 </tr>
@@ -326,35 +327,35 @@ export default function PayslipPage() {
               <tbody>
                 {billableTrips.map((trip, idx) => (
                   <tr key={trip.id} style={{ backgroundColor: idx % 2 === 1 ? '#F8FAFC' : '#fff' }}>
-                    <td style={{ border:'1px solid #E2E8F0', padding:'2px 4px', textAlign:'center', overflow:'hidden' }}>{idx + 1}</td>
-                    <td style={{ border:'1px solid #E2E8F0', padding:'2px 4px', textAlign:'center', whiteSpace:'nowrap', overflow:'hidden' }}>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 4px', textAlign:'center' }}>{idx + 1}</td>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 4px', textAlign:'center', whiteSpace:'nowrap' }}>
                       {formatThaiDate(trip.date, true)}
                     </td>
-                    <td style={{ border:'1px solid #E2E8F0', padding:'2px 4px', overflow:'hidden', whiteSpace:'nowrap' }}>{trip.product || '-'}</td>
-                    <td style={{ border:'1px solid #E2E8F0', padding:'2px 4px', textAlign:'center', overflow:'hidden', whiteSpace:'nowrap' }}>{trip.origin || '-'}</td>
-                    <td style={{ border:'1px solid #E2E8F0', padding:'2px 4px', textAlign:'center', overflow:'hidden', whiteSpace:'nowrap' }}>{trip.destination || '-'}</td>
-                    <td style={{ border:'1px solid #E2E8F0', padding:'2px 4px', textAlign:'right', fontWeight: 600 }}>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 4px', whiteSpace:'nowrap' }}>{trip.product || '-'}</td>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 4px', textAlign:'center', whiteSpace:'nowrap' }}>{trip.origin || '-'}</td>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 4px', textAlign:'center', whiteSpace:'nowrap' }}>{trip.destination || '-'}</td>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 4px', textAlign:'right', fontWeight:600 }}>
                       {trip.trip_pay > 0 ? formatNumber(trip.trip_pay) : '-'}
                     </td>
-                    <td style={{ border:'1px solid #E2E8F0', padding:'2px 4px', textAlign:'right', color:'#DC2626' }}>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 4px', textAlign:'right', color:'#DC2626' }}>
                       {trip.withdraw > 0 ? formatNumber(trip.withdraw) : '-'}
                     </td>
-                    <td style={{ border:'1px solid #E2E8F0', padding:'2px 4px', fontSize:'9.5px', overflow:'hidden', whiteSpace:'nowrap' }}>{trip.remarks || ''}</td>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 4px', fontSize:'9.5px' }}>{trip.remarks || ''}</td>
                   </tr>
                 ))}
                 {Array.from({ length: emptyRowCount }).map((_, i) => (
-                  <tr key={`empty-${i}`} style={{ height: '18px' }}>
+                  <tr key={`empty-${i}`} style={{ height: '22px' }}>
                     {Array.from({ length: 8 }).map((_, j) => (
-                      <td key={j} style={{ border: '1px solid #E2E8F0' }} />
+                      <td key={j} style={{ border: '1px solid #CBD5E1' }} />
                     ))}
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr style={{ backgroundColor: '#1E3A5F', color: '#fff', fontWeight: 700, fontSize: '10.5px' }}>
-                  <td colSpan={5} style={{ border:'1px solid #374151', padding:'4px 8px', textAlign:'right' }}>รวมเป็นเงิน / Total</td>
-                  <td style={{ border:'1px solid #374151', padding:'4px 4px', textAlign:'right' }}>{formatNumber(totals.trip_pay)}</td>
-                  <td style={{ border:'1px solid #374151', padding:'4px 4px', textAlign:'right', color:'#FCA5A5' }}>{formatNumber(totals.withdraw)}</td>
+                  <td colSpan={5} style={{ border:'1px solid #374151', padding:'5px 8px', textAlign:'right' }}>รวมเป็นเงิน / Total</td>
+                  <td style={{ border:'1px solid #374151', padding:'5px 4px', textAlign:'right' }}>{formatNumber(totals.trip_pay)}</td>
+                  <td style={{ border:'1px solid #374151', padding:'5px 4px', textAlign:'right', color:'#FCA5A5' }}>{formatNumber(totals.withdraw)}</td>
                   <td style={{ border:'1px solid #374151' }} />
                 </tr>
               </tfoot>
