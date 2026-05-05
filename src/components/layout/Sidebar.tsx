@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { href: '/trips',      label: 'เที่ยววิ่ง',         icon: MapPin },
   { href: '/jobs',       label: 'งานเข้า',             icon: ClipboardList },
   { href: '/fuel',       label: 'เติมน้ำมัน',         icon: Fuel },
+  { href: '/advances',   label: 'เบิกเงิน',            icon: Wallet },
   { href: '/expenses',   label: 'ค่าใช้จ่าย',         icon: Receipt },
   { href: '/customers',  label: 'ลูกค้า',              icon: Users },
   { href: '/drivers',    label: 'คนขับ',               icon: UserCheck },
@@ -29,6 +30,7 @@ const NAV_ITEMS = [
 // Phase badge — shows which features are available
 const PHASE_AVAILABLE = new Set([
   '/dashboard', '/trips', '/customers', '/drivers', '/payslip', '/settings',
+  '/fuel', '/advances',  // Phase 2 — now available
 ]);
 
 interface SidebarProps {

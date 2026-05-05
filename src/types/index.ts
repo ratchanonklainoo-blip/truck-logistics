@@ -1,7 +1,4 @@
-// ============================================================
 // Truck Logistics OS — TypeScript Types
-// หจก.ณสิริทรัพย์ การเกษตร
-// ============================================================
 
 export interface Driver {
   id: string;
@@ -14,6 +11,7 @@ export interface Driver {
   base_salary: number;
   commission_rate: number;
   line_user_id: string | null;
+  monthly_advance_limit: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -39,13 +37,13 @@ export interface Trip {
   id: string;
   driver_id: string;
   customer_id: string | null;
-  date: string; // YYYY-MM-DD
+  date: string;
   origin: string;
   destination: string;
   product: string;
   weight: string;
   transport_price: number;
-  trip_pay: number;        // ค่ารอบ = transport_price * commission_rate
+  trip_pay: number;
   odometer_start: number;
   odometer_end: number;
   distance: number;
@@ -60,7 +58,6 @@ export interface Trip {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
-  // joined
   driver?: Driver;
   customer?: Customer;
 }
@@ -117,15 +114,15 @@ export interface DriverMonthStats {
   trips: number;
   distance: number;
   fuel_litres: number;
-  fuel_efficiency: number; // กม./ลิตร
+  fuel_efficiency: number;
 }
 
 export interface PayslipData {
   driver: Driver;
-  month: string;       // "มกราคม"
-  year: string;        // "2568"
-  month_index: number; // 0-11
-  year_ad: number;     // 2025
+  month: string;
+  year: string;
+  month_index: number;
+  year_ad: number;
   trips: Trip[];
   totals: TripTotals;
   salary: number;
@@ -139,13 +136,98 @@ export interface AppSettings {
   initial_odometers: Record<string, number>;
 }
 
-// ── Month/Year filter ──────────────────────────────────────
 export interface MonthFilter {
-  month_index: number; // 0-11
-  year_be: number;     // พ.ศ. เช่น 2568
+  month_index: number;
+  year_be: number;
 }
 
-// ── Audit log ─────────────────────────────────────────────
+export type FuelEventStatus =
+  | 'waiting_data'
+  | 'waiting_ocr'
+  | 'needs_review'
+  | 'waiting_approval'
+  | 'waiting_payment'
+  | 'paid';
+
+export interface FuelEvent {
+  id: string;
+  job_id: string | null;
+  driver_id: string;
+  trip_id: string | null;
+  status: FuelEventStatus;
+  photo_pump_url: string | null;
+  photo_payment_url: string | null;
+  photo_odometer_url: string | null;
+  station_name: string | null;
+  amount_baht: number | null;
+  fuel_liters: number | null;
+  price_per_liter: number | null;
+  odometer: number | null;
+  payment_method: string | null;
+  ocr_confidence: number | null;
+  verified_by: string | null;
+  verified_at: string | null;
+  paid_by: string | null;
+  paid_at: string | null;
+  is_anomaly: boolean;
+  anomaly_reason: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  driver?: Driver;
+}
+
+export interface OcrResult {
+  id: string;
+  fuel_event_id: string;
+  image_url: string;
+  image_type: 'pump' | 'payment' | 'odometer';
+  raw_response: Record<string, unknown> | null;
+  extracted_data: Record<string, unknown> | null;
+  confidence: number | null;
+  model_used: string;
+  tokens_used: number | null;
+  created_at: string;
+}
+
+export interface LineMessage {
+  id: string;
+  line_user_id: string;
+  driver_id: string | null;
+  message_type: 'text' | 'image' | 'location' | 'sticker' | null;
+  content: string | null;
+  image_url: string | null;
+  intent: 'fuel_photo' | 'advance_request' | 'odometer' | 'job_accept' | 'unknown' | null;
+  processed: boolean;
+  fuel_event_id: string | null;
+  advance_request_id: string | null;
+  raw_payload: Record<string, unknown> | null;
+  received_at: string;
+  created_at: string;
+}
+
+export type AdvanceStatus = 'pending' | 'approved' | 'rejected' | 'paid';
+
+export interface AdvanceRequest {
+  id: string;
+  driver_id: string;
+  amount: number;
+  reason: string | null;
+  status: AdvanceStatus;
+  requested_via: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  paid_by: string | null;
+  paid_at: string | null;
+  month_year: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  driver?: Driver;
+}
+
 export interface AuditLog {
   id: string;
   table_name: string;
