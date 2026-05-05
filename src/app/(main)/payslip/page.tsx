@@ -317,7 +317,7 @@ export default function PayslipPage() {
                 <tr style={{ backgroundColor: '#1E3A5F', color: '#fff' }}>
                   {['#','วันที่','สินค้า','ต้นทาง','ปลายทาง','ค่าเที่ยว','เบิก','หมายเหตุ'].map((h, i) => (
                     <th key={h} style={{
-                      border: '1px solid #374151', padding: '5px 4px',
+                      border: '1px solid #374151', padding: '5px 8px',
                       fontWeight: 700, fontSize: '10.5px',
                       textAlign: i === 5 || i === 6 ? 'right' : 'center',
                     }}>{h}</th>
@@ -327,20 +327,20 @@ export default function PayslipPage() {
               <tbody>
                 {billableTrips.map((trip, idx) => (
                   <tr key={trip.id} style={{ backgroundColor: idx % 2 === 1 ? '#F8FAFC' : '#fff' }}>
-                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 4px', textAlign:'center' }}>{idx + 1}</td>
-                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 4px', textAlign:'center', whiteSpace:'nowrap' }}>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 8px', textAlign:'center' }}>{idx + 1}</td>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 8px', textAlign:'center', whiteSpace:'nowrap' }}>
                       {formatThaiDate(trip.date, true)}
                     </td>
-                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 4px', whiteSpace:'nowrap' }}>{trip.product || '-'}</td>
-                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 4px', textAlign:'center', whiteSpace:'nowrap' }}>{trip.origin || '-'}</td>
-                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 4px', textAlign:'center', whiteSpace:'nowrap' }}>{trip.destination || '-'}</td>
-                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 4px', textAlign:'right', fontWeight:600 }}>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 8px', whiteSpace:'nowrap' }}>{trip.product || '-'}</td>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 8px', textAlign:'center', whiteSpace:'nowrap' }}>{trip.origin || '-'}</td>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 8px', textAlign:'center', whiteSpace:'nowrap' }}>{trip.destination || '-'}</td>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 8px', textAlign:'right', fontWeight:600 }}>
                       {trip.trip_pay > 0 ? formatNumber(trip.trip_pay) : '-'}
                     </td>
-                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 4px', textAlign:'right', color:'#DC2626' }}>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 8px', textAlign:'right', color:'#DC2626' }}>
                       {trip.withdraw > 0 ? formatNumber(trip.withdraw) : '-'}
                     </td>
-                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 4px', fontSize:'9.5px' }}>{trip.remarks || ''}</td>
+                    <td style={{ border:'1px solid #CBD5E1', padding:'3px 8px', fontSize:'9.5px' }}>{trip.remarks || ''}</td>
                   </tr>
                 ))}
                 {Array.from({ length: emptyRowCount }).map((_, i) => (
@@ -354,8 +354,8 @@ export default function PayslipPage() {
               <tfoot>
                 <tr style={{ backgroundColor: '#1E3A5F', color: '#fff', fontWeight: 700, fontSize: '10.5px' }}>
                   <td colSpan={5} style={{ border:'1px solid #374151', padding:'5px 8px', textAlign:'right' }}>รวมเป็นเงิน / Total</td>
-                  <td style={{ border:'1px solid #374151', padding:'5px 4px', textAlign:'right' }}>{formatNumber(totals.trip_pay)}</td>
-                  <td style={{ border:'1px solid #374151', padding:'5px 4px', textAlign:'right', color:'#FCA5A5' }}>{formatNumber(totals.withdraw)}</td>
+                  <td style={{ border:'1px solid #374151', padding:'5px 8px', textAlign:'right' }}>{formatNumber(totals.trip_pay)}</td>
+                  <td style={{ border:'1px solid #374151', padding:'5px 8px', textAlign:'right', color:'#FCA5A5' }}>{formatNumber(totals.withdraw)}</td>
                   <td style={{ border:'1px solid #374151' }} />
                 </tr>
               </tfoot>
