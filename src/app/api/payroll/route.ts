@@ -27,7 +27,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const { data: payrolls, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const driverIds = [...new Set((payrolls || []).map(p => p.driver_id).filter(Boolean))];
+  const driverIds = Array.from(new Set((payrolls || []).map(p => p.driver_id).filter(Boolean)));
   let drMap: Record<string, { id: string; name: string; nickname: string; base_salary: number }> = {};
   if (driverIds.length > 0) {
     const { data: drs } = await supabase.from('drivers').select('id,name,nickname,base_salary').in('id', driverIds);

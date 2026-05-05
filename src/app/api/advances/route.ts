@@ -28,7 +28,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Fetch drivers separately (no FK constraint)
-  const driverIds = [...new Set((data || []).map((a: { driver_id: string }) => a.driver_id).filter(Boolean))];
+  const driverIds = Array.from(new Set((data || []).map((a: { driver_id: string }) => a.driver_id).filter(Boolean)));
   let driversMap: Record<string, { id: string; name: string; nickname: string }> = {};
   if (driverIds.length > 0) {
     const { data: drs } = await supabase

@@ -30,8 +30,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Fetch related data separately (no FK constraints)
-  const driverIds = [...new Set((jobs || []).map(j => j.assigned_driver_id).filter(Boolean))];
-  const customerIds = [...new Set((jobs || []).map(j => j.customer_id).filter(Boolean))];
+  const driverIds = Array.from(new Set((jobs || []).map(j => j.assigned_driver_id).filter(Boolean)));
+  const customerIds = Array.from(new Set((jobs || []).map(j => j.customer_id).filter(Boolean)));
 
   const [{ data: drivers }, { data: customers }] = await Promise.all([
     driverIds.length > 0

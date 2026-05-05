@@ -6,37 +6,35 @@ import { createClient } from '@/lib/supabase/client';
 import { COMPANY } from '@/lib/constants';
 import {
   Truck, LayoutDashboard, ClipboardList,
-  Users, Fuel, MapPin, Receipt, UserCheck,
-  BarChart3, Bell, Settings, LogOut,
+  Users, Fuel, MapPin, UserCheck,
+  Bell, Settings, LogOut,
   Wallet, ChevronRight,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 interface Badges {
-  advances: number;   // pending advances
-  fuel: number;       // fuel events waiting_approval + needs_review
-  alerts: number;     // unread alerts
-  jobs: number;       // active jobs (not closed)
+  advances: number;
+  fuel:     number;
+  alerts:   number;
+  jobs:     number;
 }
 
 const NAV_ITEMS = [
   { href: '/dashboard',  label: 'ศูนย์ควบคุม',       icon: LayoutDashboard, badge: null },
+  { href: '/jobs',       label: 'งานเข้า',             icon: ClipboardList,   badge: 'jobs'     as keyof Badges },
   { href: '/trips',      label: 'เที่ยววิ่ง',         icon: MapPin,          badge: null },
-  { href: '/jobs',       label: 'งานเข้า',             icon: ClipboardList,   badge: 'jobs' as keyof Badges },
-  { href: '/fuel',       label: 'เติมน้ำมัน',         icon: Fuel,            badge: 'fuel' as keyof Badges },
+  { href: '/fuel',       label: 'เติมน้ำมัน',         icon: Fuel,            badge: 'fuel'     as keyof Badges },
   { href: '/advances',   label: 'เบิกเงิน',            icon: Wallet,          badge: 'advances' as keyof Badges },
-  { href: '/expenses',   label: 'ค่าใช้จ่าย',         icon: Receipt,         badge: null },
   { href: '/customers',  label: 'ลูกค้า',              icon: Users,           badge: null },
   { href: '/drivers',    label: 'คนขับ',               icon: UserCheck,       badge: null },
   { href: '/payroll',    label: 'เงินเดือนและค่ารอบ', icon: Wallet,          badge: null },
-  { href: '/reports',    label: 'รายงาน',              icon: BarChart3,       badge: null },
-  { href: '/alerts',     label: 'แจ้งเตือน',           icon: Bell,            badge: 'alerts' as keyof Badges },
+  { href: '/alerts',     label: 'แจ้งเตือน',           icon: Bell,            badge: 'alerts'   as keyof Badges },
   { href: '/settings',   label: 'ตั้งค่าระบบ',         icon: Settings,        badge: null },
 ] as const;
 
 const PHASE_AVAILABLE = new Set([
-  '/dashboard', '/trips', '/jobs', '/customers', '/drivers', '/payslip', '/settings',
-  '/fuel', '/advances', '/expenses', '/payroll', '/reports', '/alerts',
+  '/dashboard', '/trips', '/jobs', '/customers', '/drivers', '/settings',
+  '/fuel', '/advances', '/payroll', '/alerts',
 ]);
 
 interface SidebarProps { userEmail?: string; }
@@ -69,7 +67,6 @@ export default function Sidebar({ userEmail }: SidebarProps) {
 
   useEffect(() => {
     loadBadges();
-    // Realtime subscription — refresh badges on any change
     const channel = supabase.channel('sidebar-badges')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'advance_requests' }, loadBadges)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fuel_events' }, loadBadges)
@@ -103,8 +100,8 @@ export default function Sidebar({ userEmail }: SidebarProps) {
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-0.5">
         {NAV_ITEMS.map(({ href, label, icon: Icon, badge }) => {
-          const isActive  = pathname === href || pathname.startsWith(href + '/');
-          const available = PHASE_AVAILABLE.has(href);
+          const isActive   = pathname === href || pathname.startsWith(href + '/');
+          const available  = PHASE_AVAILABLE.has(href);
           const badgeCount = badge ? badges[badge] : 0;
 
           return (
@@ -128,14 +125,6 @@ export default function Sidebar({ userEmail }: SidebarProps) {
             </Link>
           );
         })}
-
-        {/* Payslip */}
-        <Link href="/payslip"
-          className={`sidebar-link ${pathname === '/payslip' ? 'active' : ''}`}>
-          <Receipt className="w-4 h-4 flex-shrink-0" />
-          <span className="flex-1 truncate">ใบจ่ายเงิน</span>
-          {pathname === '/payslip' && <ChevronRight className="w-3 h-3" />}
-        </Link>
       </nav>
 
       {/* User + Logout */}

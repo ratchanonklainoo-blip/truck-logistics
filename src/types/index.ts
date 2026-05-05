@@ -54,6 +54,7 @@ export interface Trip {
   withdraw: number;
   remarks: string;
   receipt_image_url: string | null;
+  expense_notes: unknown | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

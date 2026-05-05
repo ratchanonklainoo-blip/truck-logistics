@@ -29,7 +29,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Enrich with driver names
-  const driverIds = [...new Set((expenses || []).map(e => e.driver_id).filter(Boolean))];
+  const driverIds = Array.from(new Set((expenses || []).map(e => e.driver_id).filter(Boolean)));
   let drMap: Record<string, { id: string; name: string; nickname: string }> = {};
   if (driverIds.length > 0) {
     const { data: drs } = await supabase.from('drivers').select('id,name,nickname').in('id', driverIds);

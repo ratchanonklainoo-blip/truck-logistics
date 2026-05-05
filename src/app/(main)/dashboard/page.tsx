@@ -5,9 +5,10 @@ import { createClient } from '@/lib/supabase/client';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   LineChart, Line, CartesianGrid, Legend,
+  PieChart, Pie, Cell,
 } from 'recharts';
 import {
-  Truck, Fuel, TrendingUp, DollarSign, Users,
+  Truck, Fuel, TrendingUp, TrendingDown, DollarSign, Users,
   AlertCircle, BarChart3, Gauge, Building2, Calendar, Receipt,
 } from 'lucide-react';
 import type { Trip, Driver } from '@/types';
@@ -32,7 +33,6 @@ interface DriverStat {
   fuel_efficiency: number;
 }
 
-// Custom tooltip for Recharts
 const ThaiTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
@@ -40,7 +40,7 @@ const ThaiTooltip = ({ active, payload, label }: any) => {
       <p className="font-semibold text-slate-700 mb-2">{label}</p>
       {payload.map((p: any) => (
         <p key={p.name} style={{ color: p.color }}>
-          {p.name}: {formatNumber(p.value)} บาท
+          {p.name}: {formatNumber(p.value)}
         </p>
       ))}
     </div>
@@ -55,44 +55,37 @@ export default function DashboardPage() {
   const [monthFilter, setMonthFilter] = useState(getCurrentMonthFilter());
   const [loading,     setLoading]     = useState(true);
   const [jobStats, setJobStats] = useState({
-    active: 0, inProgress: 0, waitingPayment: 0, waitingFuel: 0,
-    todayCash: 0, pendingAdvances: 0,
+    active: 0, inProgress: 0, waitingPayment: 0, waitingFuel: 0, todayCash: 0, pendingAdvances: 0,
   });
 
   useEffect(() => {
     const load = async () => {
-      const [{ data: driverData }, { data: tripData }, { data: jobData }, { data: fuelData }, { data: advData }] = await Promise.all([
+      const [{ data: dr }, { data: tr }, { data: jobs }, { data: adv }] = await Promise.all([
         supabase.from('drivers').select('*').is('deleted_at', null).eq('is_active', true),
         supabase.from('trips').select('*').is('deleted_at', null),
         supabase.from('jobs').select('status, selling_price, date').is('deleted_at', null),
-        supabase.from('fuel_events').select('status').is('deleted_at', null),
-        supabase.from('advance_requests').select('amount').eq('status', 'pending').is('deleted_at', null),
+        supabase.from('advance_requests').select('id').eq('status', 'pending').is('deleted_at', null),
       ]);
-      setDrivers(driverData || []);
-      setAllTrips(tripData  || []);
-
-      const jobs = jobData || [];
+      setDrivers(dr || []);
+      setAllTrips(tr || []);
       const today = new Date().toISOString().slice(0, 10);
+      const closedToday = (jobs || []).filter(j => j.status === 'closed' && j.date === today);
       setJobStats({
-        active:         jobs.filter(j => !['closed'].includes(j.status)).length,
-        inProgress:     jobs.filter(j => j.status === 'in_progress').length,
-        waitingPayment: jobs.filter(j => j.status === 'waiting_payment').length,
-        waitingFuel:    (fuelData || []).filter(f => ['waiting_approval','needs_review'].includes(f.status)).length,
-        todayCash:      jobs.filter(j => j.status === 'closed' && j.date === today).reduce((s, j) => s + (j.selling_price || 0), 0),
-        pendingAdvances:(advData || []).length,
+        active:         (jobs || []).filter(j => j.status !== 'closed').length,
+        inProgress:     (jobs || []).filter(j => j.status === 'in_progress').length,
+        waitingPayment: (jobs || []).filter(j => j.status === 'waiting_payment').length,
+        waitingFuel:    (jobs || []).filter(j => j.status === 'waiting_driver').length,
+        todayCash:      closedToday.reduce((s, j) => s + (j.selling_price || 0), 0),
+        pendingAdvances: (adv || []).length,
       });
-
       setLoading(false);
     };
     load();
 
-    const channel = supabase
-      .channel('dashboard-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fuel_events' }, () => load())
+    const channel = supabase.channel('dashboard-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs'  }, load)
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, []);
 
@@ -100,34 +93,26 @@ export default function DashboardPage() {
     allTrips.filter(t => isDateInFilter(t.date, monthFilter)),
   [allTrips, monthFilter]);
 
-  // ── Company stats ─────────────────────────────────────────
   const companyStats = useMemo(() => {
-    const totalRevenue = monthTrips.reduce((s, t) => s + (t.transport_price || 0), 0);
-    const totalTripPay = monthTrips.reduce((s, t) => s + (t.trip_pay        || 0), 0);
-    const totalFuel    = monthTrips.reduce((s, t) => s + (t.fuel_cost       || 0), 0);
-    const totalOther   = monthTrips.reduce((s, t) => s + (t.other_cost      || 0), 0);
-    const totalSalary  = drivers.length * (drivers[0]?.base_salary || 5000);
-    const totalExpenses = totalTripPay + totalFuel + totalOther + totalSalary;
-    return {
-      totalRevenue, totalTripPay, totalFuel, totalOther,
-      totalSalary, totalExpenses,
-      netProfit: totalRevenue - totalExpenses,
-      totalTrips: monthTrips.length,
-    };
-  }, [monthTrips, drivers]);
+    const totalRevenue  = monthTrips.reduce((s, t) => s + (t.transport_price || 0), 0);
+    const totalFuel     = monthTrips.reduce((s, t) => s + (t.fuel_cost  || 0), 0);
+    const totalOther    = monthTrips.reduce((s, t) => s + (t.other_cost || 0), 0);
+    const totalTripPay  = monthTrips.reduce((s, t) => s + (t.trip_pay   || 0), 0);
+    const totalExpenses = totalFuel + totalOther + totalTripPay;
+    return { totalRevenue, totalFuel, totalOther, totalTripPay, totalExpenses, netProfit: totalRevenue - totalExpenses };
+  }, [monthTrips]);
 
-  // ── Per-driver stats ──────────────────────────────────────
-  const driverStats: DriverStat[] = useMemo(() =>
-    drivers.map(d => {
-      const dTrips = monthTrips.filter(t => t.driver_id === d.id);
-      const revenue     = dTrips.reduce((s, t) => s + (t.transport_price || 0), 0);
-      const trip_pay    = dTrips.reduce((s, t) => s + (t.trip_pay        || 0), 0);
-      const fuel_cost   = dTrips.reduce((s, t) => s + (t.fuel_cost       || 0), 0);
-      const other_cost  = dTrips.reduce((s, t) => s + (t.other_cost      || 0), 0);
-      const distance    = dTrips.reduce((s, t) => s + (t.distance        || 0), 0);
-      const fuel_litres = dTrips.reduce((s, t) => s + (t.fuel_litres     || 0), 0);
+  const driverStats = useMemo<DriverStat[]>(() =>
+    drivers.map(driver => {
+      const dTrips = monthTrips.filter(t => t.driver_id === driver.id);
+      const revenue  = dTrips.reduce((s, t) => s + (t.transport_price || 0), 0);
+      const trip_pay = dTrips.reduce((s, t) => s + (t.trip_pay   || 0), 0);
+      const fuel_cost  = dTrips.reduce((s, t) => s + (t.fuel_cost  || 0), 0);
+      const other_cost = dTrips.reduce((s, t) => s + (t.other_cost || 0), 0);
+      const distance   = dTrips.reduce((s, t) => s + (t.distance   || 0), 0);
+      const fuel_litres = dTrips.reduce((s, t) => s + (t.fuel_litres || 0), 0);
       return {
-        driver: d, nickname: d.nickname,
+        driver, nickname: driver.nickname,
         revenue, trip_pay, fuel_cost, other_cost,
         trips: dTrips.length, distance, fuel_litres,
         fuel_efficiency: calcFuelEfficiency(distance, fuel_litres),
@@ -135,26 +120,25 @@ export default function DashboardPage() {
     }),
   [drivers, monthTrips]);
 
-  // ── Other expenses breakdown ──────────────────────────────
   const otherExpenseBreakdown = useMemo(() => {
-    const map = new Map<string, { total: number; count: number; byDriver: Record<string, number> }>();
+    const items: Record<string, { total: number; count: number; byDriver: Record<string, number> }> = {};
     monthTrips.forEach(t => {
-      if (!t.other_cost || t.other_cost === 0) return;
-      const key = t.other_item?.trim() || 'ไม่ระบุรายการ';
-      const driver = drivers.find(d => d.id === t.driver_id);
-      const driverName = driver?.nickname || '-';
-      if (!map.has(key)) map.set(key, { total: 0, count: 0, byDriver: {} });
-      const entry = map.get(key)!;
-      entry.total += t.other_cost;
-      entry.count += 1;
-      entry.byDriver[driverName] = (entry.byDriver[driverName] || 0) + t.other_cost;
+      if (!t.expense_notes) return;
+      try {
+        const notes = typeof t.expense_notes === 'string' ? JSON.parse(t.expense_notes) : t.expense_notes;
+        if (!Array.isArray(notes)) return;
+        notes.forEach((n: { label: string; amount: number }) => {
+          if (!items[n.label]) items[n.label] = { total: 0, count: 0, byDriver: {} };
+          items[n.label].total += n.amount;
+          items[n.label].count++;
+          const driverNick = drivers.find(d => d.id === t.driver_id)?.nickname || 'อื่นๆ';
+          items[n.label].byDriver[driverNick] = (items[n.label].byDriver[driverNick] || 0) + n.amount;
+        });
+      } catch {}
     });
-    return Array.from(map.entries())
-      .map(([item, data]) => ({ item, ...data }))
-      .sort((a, b) => b.total - a.total);
+    return Object.entries(items).map(([item, v]) => ({ item, ...v })).sort((a,b) => b.total - a.total);
   }, [monthTrips, drivers]);
 
-  // ── 6-month trend ─────────────────────────────────────────
   const trendData = useMemo(() => {
     const now = new Date();
     return Array.from({ length: 6 }, (_, i) => {
@@ -164,19 +148,81 @@ export default function DashboardPage() {
       const revenue  = trips.reduce((s, t) => s + (t.transport_price || 0), 0);
       const expenses = trips.reduce((s, t) => s + (t.fuel_cost || 0) + (t.other_cost || 0) + (t.trip_pay || 0), 0);
       return {
-        month:    THAI_MONTHS[d.getMonth()].slice(0, 3) + ' ' + String(d.getFullYear() + BUDDHIST_ERA_OFFSET).slice(2),
-        รายรับ:  revenue,
-        รายจ่าย: expenses,
+        month: THAI_MONTHS[d.getMonth()].slice(0, 3) + ' ' + String(d.getFullYear() + BUDDHIST_ERA_OFFSET).slice(2),
+        'รายรับ': revenue,
+        'รายจ่าย': expenses,
       };
     });
   }, [allTrips]);
 
   const barData = driverStats.map(d => ({
-    name:       d.nickname,
+    name: d.nickname,
     'ค่าขนส่ง': d.revenue,
     'ค่าเที่ยว': d.trip_pay,
     'ค่าน้ำมัน': d.fuel_cost,
   }));
+
+  // ── Reports tab state ─────────────────────────────────────
+  const [activeTab,     setActiveTab]     = useState<'overview' | 'reports'>('overview');
+  const [reportYear,    setReportYear]    = useState(new Date().getFullYear());
+  const [reportTrips,   setReportTrips]   = useState<Trip[]>([]);
+  const [reportLoading, setReportLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeTab !== 'reports') return;
+    const load = async () => {
+      setReportLoading(true);
+      const { data } = await supabase
+        .from('trips').select('*').is('deleted_at', null)
+        .gte('date', `${reportYear}-01-01`).lte('date', `${reportYear}-12-31`);
+      setReportTrips(data || []);
+      setReportLoading(false);
+    };
+    load();
+  }, [activeTab, reportYear]);
+
+  const THAI_MONTHS_SHORT = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const PIE_COLORS = ['#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#6B7280'];
+
+  const reportMonthly = useMemo(() =>
+    THAI_MONTHS_SHORT.map((month, i) => {
+      const mo = reportTrips.filter(t => new Date(t.date).getMonth() === i);
+      const revenue = mo.reduce((s, t) => s + (t.transport_price || 0), 0);
+      const fuel    = mo.reduce((s, t) => s + (t.fuel_cost || 0), 0);
+      const profit  = revenue - fuel - mo.reduce((s, t) => s + (t.trip_pay || 0) + (t.other_cost || 0), 0);
+      return { month, 'รายได้': revenue, 'กำไร': profit };
+    }),
+  [reportTrips]);
+
+  const reportKPI = useMemo(() => ({
+    revenue: reportTrips.reduce((s, t) => s + (t.transport_price || 0), 0),
+    profit:  reportTrips.reduce((s, t) => s + (t.transport_price || 0) - (t.fuel_cost || 0) - (t.trip_pay || 0) - (t.other_cost || 0), 0),
+    trips:   reportTrips.length,
+    dist:    reportTrips.reduce((s, t) => s + (t.distance || 0), 0),
+  }), [reportTrips]);
+
+  const reportPieData = useMemo(() => {
+    const fuel  = reportTrips.reduce((s, t) => s + (t.fuel_cost || 0), 0);
+    const pay   = reportTrips.reduce((s, t) => s + (t.trip_pay || 0), 0);
+    const other = reportTrips.reduce((s, t) => s + (t.other_cost || 0), 0);
+    return [
+      { name: 'ค่าน้ำมัน', value: fuel },
+      { name: 'ค่าเที่ยว', value: pay },
+      { name: 'อื่นๆ', value: other },
+    ].filter(d => d.value > 0);
+  }, [reportTrips]);
+
+  const reportDriverData = useMemo(() =>
+    drivers.map(d => {
+      const dTrips = reportTrips.filter(t => t.driver_id === d.id);
+      return {
+        name: d.nickname,
+        'เที่ยว': dTrips.length,
+        'รายได้': dTrips.reduce((s, t) => s + (t.transport_price || 0), 0),
+        'ค่าน้ำมัน': dTrips.reduce((s, t) => s + (t.fuel_cost || 0), 0),
+      };
+    }),
+  [reportTrips, drivers]);
 
   const monthLabel = getThaiMonthLabel(monthFilter);
   const yearOptions = Array.from({ length: 5 }, (_, i) => {
@@ -184,42 +230,55 @@ export default function DashboardPage() {
     return now.getFullYear() + BUDDHIST_ERA_OFFSET - i;
   });
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full min-h-screen">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-500 rounded-full animate-spin" />
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="flex items-center justify-center h-full min-h-screen">
+      <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-500 rounded-full animate-spin" />
+    </div>
+  );
 
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <BarChart3 className="w-7 h-7 text-blue-600" /> ศูนย์ควบคุม
-          </h1>
-          <p className="text-slate-500 text-sm">{COMPANY.name}</p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+              <BarChart3 className="w-7 h-7 text-blue-600" /> {COMPANY.name.split(' ')[0]}
+            </h1>
+            <p className="text-slate-500 text-sm">{COMPANY.name}</p>
+          </div>
+          <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+            <button onClick={() => setActiveTab('overview')}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'overview' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+              ภาพรวม
+            </button>
+            <button onClick={() => setActiveTab('reports')}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${activeTab === 'reports' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+              <BarChart3 className="w-3.5 h-3.5" /> รายงานประจำปี
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-slate-400" />
-          <select
-            className="form-input w-36 text-sm"
-            value={monthFilter.month_index}
-            onChange={e => setMonthFilter(f => ({ ...f, month_index: Number(e.target.value) }))}
-          >
-            {THAI_MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
-          </select>
-          <select
-            className="form-input w-24 text-sm"
-            value={monthFilter.year_be}
-            onChange={e => setMonthFilter(f => ({ ...f, year_be: Number(e.target.value) }))}
-          >
-            {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
+          {activeTab === 'overview' ? (<>
+            <select className="form-input w-36 text-sm" value={monthFilter.month_index}
+              onChange={e => setMonthFilter(f => ({ ...f, month_index: Number(e.target.value) }))}>
+              {THAI_MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
+            </select>
+            <select className="form-input w-24 text-sm" value={monthFilter.year_be}
+              onChange={e => setMonthFilter(f => ({ ...f, year_be: Number(e.target.value) }))}>
+              {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </>) : (
+            <select className="form-input text-sm w-28" value={reportYear}
+              onChange={e => setReportYear(Number(e.target.value))}>
+              {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y + 543}</option>)}
+            </select>
+          )}
         </div>
       </div>
+
+      {activeTab === 'overview' && <>
 
       {/* Live Job Status Row */}
       <div className="grid grid-cols-3 lg:grid-cols-6 gap-3">
@@ -243,150 +302,70 @@ export default function DashboardPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          {
-            icon: TrendingUp, label: 'รายรับรวม',
-            value: formatCurrency(companyStats.totalRevenue),
-            color: 'border-green-500 text-green-600 bg-green-50',
-          },
-          {
-            icon: Fuel, label: 'ค่าน้ำมันรวม',
-            value: formatCurrency(companyStats.totalFuel),
-            color: 'border-blue-500 text-blue-600 bg-blue-50',
-          },
-          {
-            icon: DollarSign, label: 'รายจ่ายรวม',
-            value: formatCurrency(companyStats.totalExpenses),
-            color: 'border-red-500 text-red-600 bg-red-50',
-          },
-          {
-            icon: companyStats.netProfit >= 0 ? TrendingUp : AlertCircle,
+          { icon: TrendingUp,   label: 'รายรับรวม',  value: formatCurrency(companyStats.totalRevenue),  color: 'border-green-500 text-green-600 bg-green-50' },
+          { icon: Fuel,         label: 'ค่าน้ำมันรวม',  value: formatCurrency(companyStats.totalFuel),     color: 'border-blue-500  text-blue-600  bg-blue-50'  },
+          { icon: DollarSign,   label: 'รายจ่ายรวม', value: formatCurrency(companyStats.totalExpenses), color: 'border-red-500   text-red-600   bg-red-50'   },
+          { icon: companyStats.netProfit >= 0 ? TrendingUp : AlertCircle,
             label: 'กำไรสุทธิ',
             value: formatCurrency(companyStats.netProfit),
-            color: companyStats.netProfit >= 0
-              ? 'border-indigo-500 text-indigo-600 bg-indigo-50'
-              : 'border-red-500 text-red-600 bg-red-50',
-          },
+            color: companyStats.netProfit >= 0 ? 'border-emerald-500 text-emerald-600 bg-emerald-50' : 'border-red-500 text-red-600 bg-red-50' },
         ].map(({ icon: Icon, label, value, color }) => (
-          <div key={label} className={`stat-card border-l-4 ${color}`}>
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-xs text-slate-500 mb-1">{label} ({monthLabel})</p>
-                <p className="text-xl font-bold">{value}</p>
-              </div>
-              <Icon className="w-8 h-8 opacity-20" />
+          <div key={label} className={`bg-white rounded-xl border-l-4 p-4 shadow-sm ${color}`}>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold uppercase tracking-wide opacity-70">{label}</p>
+              <Icon className="w-4 h-4 opacity-60" />
             </div>
+            <p className="text-xl font-bold">{value}</p>
+            <p className="text-xs opacity-60 mt-0.5">{monthLabel}</p>
           </div>
         ))}
       </div>
 
-      {/* Driver stat cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {driverStats.map(d => (
-          <div key={d.driver.id} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                <Users className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-slate-800">{d.driver.name}</h3>
-                <p className="text-xs text-slate-400">{d.driver.license_plate}</p>
-              </div>
-              <div className="ml-auto text-right">
-                <p className="text-xs text-slate-400">จำนวนเที่ยว</p>
-                <p className="text-xl font-bold text-blue-600">{d.trips}</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="bg-green-50 rounded-lg p-2">
-                <p className="text-xs text-slate-500">ค่าขนส่ง</p>
-                <p className="font-bold text-green-700 text-sm">{formatCurrency(d.revenue)}</p>
-              </div>
-              <div className="bg-blue-50 rounded-lg p-2">
-                <p className="text-xs text-slate-500">น้ำมัน</p>
-                <p className="font-bold text-blue-700 text-sm">{formatCurrency(d.fuel_cost)}</p>
-              </div>
-              <div className="bg-orange-50 rounded-lg p-2">
-                <p className="text-xs text-slate-500">สิ้นเปลือง</p>
-                <p className="font-bold text-orange-700 text-sm">
-                  {d.fuel_efficiency > 0 ? `${d.fuel_efficiency} กม./ล.` : '-'}
-                </p>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Other Expenses Breakdown */}
-      {otherExpenseBreakdown.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-            <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-              <Receipt className="w-5 h-5 text-orange-500" />
-              รายละเอียดค่าอื่นๆ — {monthLabel}
-            </h3>
-            <span className="text-sm font-bold text-orange-600">
-              รวม: {formatCurrency(companyStats.totalOther)}
-            </span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-xs font-semibold uppercase">
-                  <th className="px-5 py-3 text-left">รายการ</th>
-                  {drivers.map(d => (
-                    <th key={d.id} className="px-4 py-3 text-right">{d.nickname}</th>
-                  ))}
-                  <th className="px-4 py-3 text-right">ครั้ง</th>
-                  <th className="px-5 py-3 text-right">รวม</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {otherExpenseBreakdown.map((row, i) => (
-                  <tr key={row.item} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
-                    <td className="px-5 py-3 font-medium text-slate-700">{row.item}</td>
-                    {drivers.map(d => (
-                      <td key={d.id} className="px-4 py-3 text-right text-slate-600">
-                        {row.byDriver[d.nickname]
-                          ? formatCurrency(row.byDriver[d.nickname])
-                          : <span className="text-slate-300">—</span>}
-                      </td>
-                    ))}
-                    <td className="px-4 py-3 text-right text-slate-400 text-xs">{row.count} ครั้ง</td>
-                    <td className="px-5 py-3 text-right font-bold text-orange-600">
-                      {formatCurrency(row.total)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="bg-orange-50 border-t-2 border-orange-200 font-bold">
-                  <td className="px-5 py-3 text-slate-700">รวมค่าอื่นๆ ทั้งหมด</td>
-                  {drivers.map(d => {
-                    const dTotal = otherExpenseBreakdown.reduce(
-                      (s, r) => s + (r.byDriver[d.nickname] || 0), 0
-                    );
-                    return (
-                      <td key={d.id} className="px-4 py-3 text-right text-orange-700">
-                        {dTotal > 0 ? formatCurrency(dTotal) : <span className="text-slate-300 font-normal">—</span>}
-                      </td>
-                    );
-                  })}
-                  <td className="px-4 py-3 text-right text-slate-400 text-xs">
-                    {otherExpenseBreakdown.reduce((s, r) => s + r.count, 0)} ครั้ง
-                  </td>
-                  <td className="px-5 py-3 text-right text-orange-600 text-base">
-                    {formatCurrency(companyStats.totalOther)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+      {/* Driver Stats Table */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
+          <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+            <Users className="w-5 h-5 text-blue-500" />
+            สรุปรายคนขับ — {monthLabel}
+          </h3>
         </div>
-      )}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-xs font-semibold uppercase">
+                <th className="px-5 py-3 text-left">คนขับ</th>
+                <th className="px-4 py-3 text-right">เที่ยว</th>
+                <th className="px-4 py-3 text-right">รายรับ</th>
+                <th className="px-4 py-3 text-right">ค่าเที่ยว</th>
+                <th className="px-4 py-3 text-right">น้ำมัน</th>
+                <th className="px-4 py-3 text-right">ระยะทาง</th>
+                <th className="px-5 py-3 text-right">สิ้นเปลือง</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {driverStats.map((d, i) => (
+                <tr key={d.driver.id} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                  <td className="px-5 py-3 font-semibold text-slate-700">{d.nickname}</td>
+                  <td className="px-4 py-3 text-right">{d.trips}</td>
+                  <td className="px-4 py-3 text-right text-green-700 font-medium">{formatCurrency(d.revenue)}</td>
+                  <td className="px-4 py-3 text-right text-blue-700 font-medium">{formatCurrency(d.trip_pay)}</td>
+                  <td className="px-4 py-3 text-right text-orange-600">{formatCurrency(d.fuel_cost)}</td>
+                  <td className="px-4 py-3 text-right text-slate-600">{formatNumber(d.distance)} กม.</td>
+                  <td className="px-5 py-3 text-right">
+                    <span className={`font-semibold ${d.fuel_efficiency >= 3 ? 'text-green-600' : 'text-orange-500'}`}>
+                      {d.fuel_efficiency > 0 ? `${d.fuel_efficiency} กม./ล.` : '-'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-      {/* Charts */}
+      {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Revenue/Expense comparison */}
+        {/* Revenue/Expense bar */}
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
           <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-blue-500" />
@@ -421,10 +400,8 @@ export default function DashboardPage() {
                   <p className="text-2xl font-bold text-orange-600 mb-2">
                     {d.fuel_efficiency > 0 ? d.fuel_efficiency : '-'}
                   </p>
-                  <div
-                    className="w-full rounded-t-lg transition-all duration-700"
-                    style={{ height: `${Math.max(heightPct, 8)}%`, backgroundColor: CHART_COLORS.other }}
-                  />
+                  <div className="w-full rounded-t-lg transition-all duration-700"
+                    style={{ height: `${Math.max(heightPct, 8)}%`, backgroundColor: CHART_COLORS.other }} />
                   <p className="mt-2 text-sm font-medium text-slate-600">{d.nickname}</p>
                   <p className="text-xs text-slate-400">{formatNumber(d.distance)} กม.</p>
                 </div>
@@ -434,7 +411,7 @@ export default function DashboardPage() {
           <p className="text-center text-xs text-slate-400 mt-2">*ยิ่งสูงยิ่งประหยัดน้ำมัน</p>
         </div>
 
-        {/* 6-Month trend */}
+        {/* 6-month trend */}
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm lg:col-span-2">
           <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-green-500" />
@@ -453,6 +430,89 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </div>
       </div>
+
+      </>}
+
+      {/* REPORTS TAB */}
+      {activeTab === 'reports' && (
+        reportLoading ? (
+          <div className="flex items-center justify-center py-24">
+            <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-500 rounded-full animate-spin" />
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div className="grid grid-cols-4 gap-4">
+              {[
+                { label: 'รายได้รวมทั้งปี',  value: formatCurrency(reportKPI.revenue),  icon: TrendingUp,  color: 'text-blue-600   bg-blue-50'   },
+                { label: 'กำไรสุทธิ',         value: formatCurrency(reportKPI.profit),   icon: reportKPI.profit >= 0 ? TrendingUp : TrendingDown, color: reportKPI.profit >= 0 ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50' },
+                { label: 'จำนวนเที่ยวรวม',    value: `${reportKPI.trips} เที่ยว`,  icon: Truck,       color: 'text-orange-600 bg-orange-50' },
+                { label: 'ระยะทางรวม',        value: `${reportKPI.dist.toLocaleString('th-TH',{maximumFractionDigits:0})} กม.`, icon: Gauge, color: 'text-purple-600 bg-purple-50' },
+              ].map(({ label, value, icon: Icon, color }) => {
+                const [tc, bc] = color.split(' ');
+                return (
+                  <div key={label} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                    <div className={`w-9 h-9 rounded-lg ${bc} flex items-center justify-center mb-3`}>
+                      <Icon className={`w-5 h-5 ${tc}`} />
+                    </div>
+                    <div className="text-lg font-bold text-slate-800">{value}</div>
+                    <div className="text-sm text-slate-500 mt-1">{label}</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+              <h3 className="font-semibold text-slate-700 mb-4">
+                รายได้และกำไรรายเดือน — {reportYear + 543}
+              </h3>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={reportMonthly}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12, fontFamily: 'Sarabun' }} />
+                  <YAxis tick={{ fontSize: 11, fontFamily: 'Sarabun' }} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}K` : String(v)} />
+                  <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ fontFamily: 'Sarabun', fontSize: 13 }} />
+                  <Legend wrapperStyle={{ fontFamily: 'Sarabun', fontSize: 13 }} />
+                  <Bar dataKey="รายได้" fill="#3B82F6" radius={[4,4,0,0]} />
+                  <Bar dataKey="กำไร"  fill="#10B981" radius={[4,4,0,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="grid grid-cols-2 gap-6">
+              <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                <h3 className="font-semibold text-slate-700 mb-4">สัดส่วนค่าใช้จ่าย</h3>
+                {reportPieData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie data={reportPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}
+                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                        {reportPieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ fontFamily: 'Sarabun' }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-40 flex items-center justify-center text-slate-400">ไม่มีข้อมูล</div>
+                )}
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                <h3 className="font-semibold text-slate-700 mb-4">เปรียบเทียบคนขับ</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={reportDriverData} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis type="number" tick={{ fontSize: 11, fontFamily: 'Sarabun' }} tickFormatter={v => `${(v/1000).toFixed(0)}K`} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 12, fontFamily: 'Sarabun' }} width={50} />
+                    <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ fontFamily: 'Sarabun', fontSize: 13 }} />
+                    <Legend wrapperStyle={{ fontFamily: 'Sarabun', fontSize: 13 }} />
+                    <Bar dataKey="รายได้"   fill="#3B82F6" radius={[0,4,4,0]} />
+                    <Bar dataKey="ค่าน้ำมัน" fill="#F59E0B" radius={[0,4,4,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        )
+      )}
     </div>
   );
 }

@@ -49,6 +49,7 @@ export async function downloadLineImage(messageId: string): Promise<Buffer> {
 export interface LineTextMessage {
   type: 'text';
   text: string;
+  [key: string]: unknown;
 }
 
 export interface LineMessage {

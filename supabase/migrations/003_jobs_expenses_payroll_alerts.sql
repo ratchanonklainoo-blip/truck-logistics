@@ -50,10 +50,12 @@ $$ LANGUAGE plpgsql;
 
 CREATE SEQUENCE IF NOT EXISTS job_number_seq START 1;
 
+DROP TRIGGER IF EXISTS jobs_number_trigger ON jobs;
 CREATE TRIGGER jobs_number_trigger
   BEFORE INSERT ON jobs
   FOR EACH ROW EXECUTE FUNCTION generate_job_number();
 
+DROP TRIGGER IF EXISTS jobs_updated_at ON jobs;
 CREATE TRIGGER jobs_updated_at
   BEFORE UPDATE ON jobs
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
@@ -78,6 +80,7 @@ CREATE TABLE IF NOT EXISTS expenses (
   deleted_at    TIMESTAMPTZ
 );
 
+DROP TRIGGER IF EXISTS expenses_updated_at ON expenses;
 CREATE TRIGGER expenses_updated_at
   BEFORE UPDATE ON expenses
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
@@ -110,6 +113,7 @@ CREATE TABLE IF NOT EXISTS payrolls (
   UNIQUE(driver_id, month_year)
 );
 
+DROP TRIGGER IF EXISTS payrolls_updated_at ON payrolls;
 CREATE TRIGGER payrolls_updated_at
   BEFORE UPDATE ON payrolls
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
@@ -136,6 +140,7 @@ CREATE TABLE IF NOT EXISTS alerts (
   updated_at    TIMESTAMPTZ DEFAULT now()
 );
 
+DROP TRIGGER IF EXISTS alerts_updated_at ON alerts;
 CREATE TRIGGER alerts_updated_at
   BEFORE UPDATE ON alerts
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
@@ -159,6 +164,11 @@ ALTER TABLE jobs        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE expenses    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payrolls    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE alerts      ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "auth_all_jobs"     ON jobs;
+DROP POLICY IF EXISTS "auth_all_expenses" ON expenses;
+DROP POLICY IF EXISTS "auth_all_payrolls" ON payrolls;
+DROP POLICY IF EXISTS "auth_all_alerts"   ON alerts;
 
 CREATE POLICY "auth_all_jobs"      ON jobs     FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "auth_all_expenses"  ON expenses FOR ALL TO authenticated USING (true) WITH CHECK (true);

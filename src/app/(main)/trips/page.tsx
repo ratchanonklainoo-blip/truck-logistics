@@ -8,6 +8,7 @@ import {
   Truck, Users, Calendar, Download, Upload as UploadIcon,
   Building2, TrendingUp, Fuel, DollarSign, Settings,
   FileUp, AlertCircle, CheckCircle2, X, Loader2,
+  Receipt, Plus, Filter, Trash2,
 } from 'lucide-react';
 import type { Driver, Trip, TripFormData, AppSettings, MonthFilter } from '@/types';
 import {
@@ -34,6 +35,30 @@ export default function TripsPage() {
   const [initialOdometer, setInitialOdometer]  = useState(0);
   const [showOdoSettings, setShowOdoSettings]  = useState(false);
   const [tempOdo,         setTempOdo]          = useState('');
+
+  // ── Tab + expenses state ──────────────────────────────────
+  const [activeTab, setActiveTab] = useState<'trips' | 'expenses'>('trips');
+
+  interface ExpenseRow {
+    id: string; category: string; description: string | null;
+    amount: number; date: string; driver_id: string | null; driverName?: string;
+  }
+  const EXP_CATEGORIES: Record<string, { label: string; bg: string; color: string }> = {
+    toll:    { label: 'ค่าทางด่วน', bg: 'bg-blue-100',   color: 'text-blue-700'   },
+    repair:  { label: 'ซ่อมบำรุง',  bg: 'bg-red-100',    color: 'text-red-700'    },
+    food:    { label: 'ค่าอาหาร',   bg: 'bg-yellow-100', color: 'text-yellow-700' },
+    parking: { label: 'ค่าจอด',     bg: 'bg-purple-100', color: 'text-purple-700' },
+    other:   { label: 'อื่นๆ',      bg: 'bg-slate-100',  color: 'text-slate-700'  },
+  };
+  const [expenses,    setExpenses]    = useState<ExpenseRow[]>([]);
+  const [expLoading,  setExpLoading]  = useState(false);
+  const [expFilter,   setExpFilter]   = useState('all');
+  const [showAddExp,  setShowAddExp]  = useState(false);
+  const [deletingExp, setDeletingExp] = useState<string | null>(null);
+  const [newExp, setNewExp] = useState({
+    category: 'toll', description: '', amount: '',
+    date: new Date().toISOString().slice(0, 10), driver_id: '',
+  });
 
   // ── Load drivers ─────────────────────────────────────────
   useEffect(() => {
@@ -385,6 +410,54 @@ export default function TripsPage() {
     setImportRows([]);
   };
 
+  // ── Expenses functions ───────────────────────────────────
+  const loadExpenses = async () => {
+    setExpLoading(true);
+    const yr  = monthFilter.year_be - 543;
+    const mo  = String(monthFilter.month_index + 1).padStart(2, '0');
+    const { data } = await supabase.from('expenses')
+      .select('id,category,description,amount,date,driver_id')
+      .not('category', 'in', '("fuel","advance")')
+      .is('deleted_at', null)
+      .gte('date', `${yr}-${mo}-01`)
+      .lte('date', `${yr}-${mo}-31`)
+      .order('date', { ascending: false });
+    const drMap: Record<string, string> = {};
+    drivers.forEach(d => { drMap[d.id] = d.nickname; });
+    setExpenses((data || []).map(e => ({ ...e, driverName: e.driver_id ? (drMap[e.driver_id] || '-') : '-' })));
+    setExpLoading(false);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'expenses' && drivers.length > 0) loadExpenses();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, monthFilter, drivers.length]);
+
+  const filteredExp = expFilter === 'all' ? expenses : expenses.filter(e => e.category === expFilter);
+  const expTotal    = filteredExp.reduce((s, e) => s + e.amount, 0);
+
+  const saveExpense = async () => {
+    if (!newExp.amount || isNaN(Number(newExp.amount))) return;
+    await supabase.from('expenses').insert({
+      category:    newExp.category,
+      description: newExp.description || null,
+      amount:      Number(newExp.amount),
+      date:        newExp.date,
+      driver_id:   newExp.driver_id || null,
+    });
+    setShowAddExp(false);
+    setNewExp({ category: 'toll', description: '', amount: '', date: new Date().toISOString().slice(0,10), driver_id: '' });
+    await loadExpenses();
+  };
+
+  const deleteExpense = async (id: string) => {
+    if (!confirm('ลบรายการนี้?')) return;
+    setDeletingExp(id);
+    await supabase.from('expenses').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+    setDeletingExp(null);
+    await loadExpenses();
+  };
+
   const monthLabel = getThaiMonthLabel(monthFilter);
   const yearOptions = Array.from({ length: 5 }, (_, i) => {
     const now = new Date();
@@ -395,11 +468,23 @@ export default function TripsPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <Truck className="w-7 h-7 text-blue-600" /> เที่ยววิ่ง
-          </h1>
-          <p className="text-slate-500 text-sm mt-0.5">{COMPANY.name}</p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+              <Truck className="w-7 h-7 text-blue-600" /> เที่ยววิ่ง
+            </h1>
+            <p className="text-slate-500 text-sm mt-0.5">{COMPANY.name}</p>
+          </div>
+          <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+            <button onClick={() => setActiveTab('trips')}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'trips' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+              เที่ยววิ่ง
+            </button>
+            <button onClick={() => setActiveTab('expenses')}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${activeTab === 'expenses' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+              <Receipt className="w-3.5 h-3.5" /> ค่าใช้จ่ายอื่น
+            </button>
+          </div>
         </div>
         {/* Month/Year filter */}
         <div className="flex items-center gap-2">
@@ -421,6 +506,7 @@ export default function TripsPage() {
         </div>
       </div>
 
+      {activeTab === 'trips' && <>
       {/* Company Summary Bar */}
       <div className="rounded-xl p-5 text-white shadow-lg" style={{ background: 'linear-gradient(135deg, #1E3A5F 0%, #2d5a8e 100%)' }}>
         <div className="flex justify-between items-center mb-4">
@@ -553,17 +639,163 @@ export default function TripsPage() {
         </div>
       </div>
 
+      </>}
+
+      {/* ── EXPENSES TAB ─────────────────────────────────────── */}
+      {activeTab === 'expenses' && (
+        <div className="space-y-4">
+          {/* Filter bar */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-wrap gap-3 items-center">
+            <Filter className="w-4 h-4 text-slate-400" />
+            <select className="form-input text-sm w-44" value={expFilter} onChange={e => setExpFilter(e.target.value)}>
+              <option value="all">ทุกประเภท</option>
+              {Object.entries(EXP_CATEGORIES).map(([k, v]) => (
+                <option key={k} value={k}>{v.label}</option>
+              ))}
+            </select>
+            <span className="text-sm text-slate-500">{filteredExp.length} รายการ · รวม {formatCurrency(expTotal)}</span>
+            <div className="ml-auto flex gap-2">
+              <button onClick={loadExpenses} className="btn-secondary text-sm p-2" title="รีเฟรช">
+                <Receipt className="w-4 h-4" />
+              </button>
+              <button onClick={() => setShowAddExp(true)} className="btn-primary text-sm">
+                <Plus className="w-4 h-4" /> เพิ่มค่าใช้จ่าย
+              </button>
+            </div>
+          </div>
+
+          {/* Expenses table */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            {expLoading ? (
+              <div className="p-12 flex justify-center">
+                <div className="w-6 h-6 border-4 border-slate-200 border-t-blue-500 rounded-full animate-spin" />
+              </div>
+            ) : filteredExp.length === 0 ? (
+              <div className="p-12 text-center text-slate-400">
+                <Receipt className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+                <p>ไม่พบรายการค่าใช้จ่าย</p>
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    {['วันที่', 'ประเภท', 'รายละเอียด', 'คนขับ', 'จำนวน', ''].map(h => (
+                      <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredExp.map(e => {
+                    const cat = EXP_CATEGORIES[e.category] || EXP_CATEGORIES.other;
+                    return (
+                      <tr key={e.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 text-slate-500 text-xs">
+                          {new Date(e.date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cat.bg} ${cat.color}`}>
+                            {cat.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-700">{e.description || '-'}</td>
+                        <td className="px-4 py-3 text-slate-600">{e.driverName || '-'}</td>
+                        <td className="px-4 py-3 font-semibold text-slate-800">{formatCurrency(e.amount)}</td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => deleteExpense(e.id)}
+                            disabled={deletingExp === e.id}
+                            className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                  <tr>
+                    <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-slate-600">รวมค่าใช้จ่าย</td>
+                    <td className="px-4 py-3 font-bold text-slate-800">{formatCurrency(expTotal)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Add Expense Modal */}
+      {showAddExp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-orange-500" /> เพิ่มค่าใช้จ่าย
+              </h3>
+              <button onClick={() => setShowAddExp(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="form-label">ประเภท</label>
+                <select className="form-input" value={newExp.category}
+                  onChange={e => setNewExp(f => ({ ...f, category: e.target.value }))}>
+                  {Object.entries(EXP_CATEGORIES).map(([k, v]) => (
+                    <option key={k} value={k}>{v.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="form-label">รายละเอียด</label>
+                <input type="text" className="form-input" value={newExp.description}
+                  onChange={e => setNewExp(f => ({ ...f, description: e.target.value }))}
+                  placeholder="ระบุรายละเอียด..." />
+              </div>
+              <div>
+                <label className="form-label">จำนวนเงิน (บาท)</label>
+                <input type="number" className="form-input" value={newExp.amount}
+                  onChange={e => setNewExp(f => ({ ...f, amount: e.target.value }))}
+                  placeholder="0" min="0" step="50" />
+              </div>
+              <div>
+                <label className="form-label">วันที่</label>
+                <input type="date" className="form-input" value={newExp.date}
+                  onChange={e => setNewExp(f => ({ ...f, date: e.target.value }))} />
+              </div>
+              <div>
+                <label className="form-label">คนขับ (ไม่บังคับ)</label>
+                <select className="form-input" value={newExp.driver_id}
+                  onChange={e => setNewExp(f => ({ ...f, driver_id: e.target.value }))}>
+                  <option value="">- ไม่ระบุ -</option>
+                  {drivers.map(d => (
+                    <option key={d.id} value={d.id}>{d.nickname} ({d.name})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
+              <button onClick={() => setShowAddExp(false)} className="btn-secondary text-sm">ยกเลิก</button>
+              <button onClick={saveExpense} className="btn-primary text-sm">
+                <Plus className="w-4 h-4" /> บันทึก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Import CSV Modal */}
       {showImport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
-            {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
               <div className="flex items-center gap-2">
                 <FileUp className="w-5 h-5 text-blue-600" />
-                <h3 className="font-bold text-lg text-slate-800">Import CSV — เที่ยววิ่ง</h3>
+                <h3 className="font-bold text-lg text-slate-800">Import CSV</h3>
                 <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                  คนขับ: {selectedDriver?.name}
+                  {selectedDriver?.name}
                 </span>
               </div>
               <button onClick={() => { setShowImport(false); setImportRows([]); setImportDone(null); }}
@@ -572,7 +804,6 @@ export default function TripsPage() {
               </button>
             </div>
 
-            {/* Import Done Banner */}
             {importDone && (
               <div className={`mx-6 mt-4 rounded-lg px-4 py-3 flex items-center gap-2 text-sm font-medium
                 ${importDone.fail === 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-yellow-50 text-yellow-700 border border-yellow-200'}`}>
@@ -582,23 +813,21 @@ export default function TripsPage() {
               </div>
             )}
 
-            {/* Stats */}
             {importRows.length > 0 && (
               <div className="px-6 pt-4 flex gap-4 text-sm">
                 <span className="flex items-center gap-1.5 text-green-700 bg-green-50 px-3 py-1 rounded-full">
                   <CheckCircle2 className="w-4 h-4" />
-                  พร้อม import: {importRows.filter(r => r.errors.length === 0).length} รายการ
+                  พร้อม: {importRows.filter(r => r.errors.length === 0).length}
                 </span>
                 {importRows.some(r => r.errors.length > 0) && (
                   <span className="flex items-center gap-1.5 text-red-700 bg-red-50 px-3 py-1 rounded-full">
                     <AlertCircle className="w-4 h-4" />
-                    มีปัญหา: {importRows.filter(r => r.errors.length > 0).length} รายการ
+                    มีปัญหา: {importRows.filter(r => r.errors.length > 0).length}
                   </span>
                 )}
               </div>
             )}
 
-            {/* Table */}
             <div className="flex-1 overflow-auto px-6 py-4">
               {importRows.length === 0 && !importDone ? (
                 <div className="flex flex-col items-center justify-center h-40 text-slate-400">
@@ -609,32 +838,22 @@ export default function TripsPage() {
                 <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-100 text-slate-600">
-                      <th className="px-2 py-2 text-left border border-slate-200">สถานะ</th>
-                      <th className="px-2 py-2 text-left border border-slate-200">วันที่</th>
-                      <th className="px-2 py-2 text-left border border-slate-200">สินค้า</th>
-                      <th className="px-2 py-2 text-left border border-slate-200">ต้นทาง</th>
-                      <th className="px-2 py-2 text-left border border-slate-200">ปลายทาง</th>
-                      <th className="px-2 py-2 text-right border border-slate-200">ไมล์ต้น</th>
-                      <th className="px-2 py-2 text-right border border-slate-200">ไมล์ปลาย</th>
-                      <th className="px-2 py-2 text-right border border-slate-200">ค่าขนส่ง</th>
-                      <th className="px-2 py-2 text-right border border-slate-200">ค่าเที่ยว</th>
-                      <th className="px-2 py-2 text-right border border-slate-200">น้ำมัน</th>
-                      <th className="px-2 py-2 text-left border border-slate-200">หมายเหตุ</th>
+                      {['สถานะ','วันที่','สินค้า','ต้นทาง','ปลายทาง','ไมล์ต้น','ไมล์ปลาย','ค่าขนส่ง','ค่าเที่ยว','น้ำมัน','หมายเหตุ'].map(h => (
+                        <th key={h} className="px-2 py-2 text-left border border-slate-200">{h}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
                     {importRows.map((row, i) => (
-                      <tr key={i}
-                        className={row.errors.length > 0 ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                      <tr key={i} className={row.errors.length > 0 ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
                         <td className="px-2 py-1.5 border border-slate-200">
-                          {row.errors.length === 0 ? (
-                            <CheckCircle2 className="w-4 h-4 text-green-500" />
-                          ) : (
-                            <div className="flex items-start gap-1">
-                              <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                              <span className="text-red-600 leading-tight">{row.errors.join(', ')}</span>
-                            </div>
-                          )}
+                          {row.errors.length === 0
+                            ? <CheckCircle2 className="w-4 h-4 text-green-500" />
+                            : <div className="flex items-start gap-1">
+                                <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                                <span className="text-red-600 leading-tight">{row.errors.join(', ')}</span>
+                              </div>
+                          }
                         </td>
                         <td className="px-2 py-1.5 border border-slate-200">{row.date || row.raw[0]}</td>
                         <td className="px-2 py-1.5 border border-slate-200">{row.product}</td>
@@ -653,29 +872,18 @@ export default function TripsPage() {
               )}
             </div>
 
-            {/* Footer */}
             <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between">
-              <p className="text-xs text-slate-400">
-                รูปแบบไฟล์: CSV ที่ Export จากระบบนี้ · วันที่รองรับ YYYY-MM-DD และ DD/MM/YYYY (พ.ศ. หรือ ค.ศ.)
-              </p>
+              <p className="text-xs text-slate-400">CSV format: วันที่, สินค้า, ต้นทาง, ปลายทาง, ไมล์ต้น, ไมล์ปลาย, ค่าขนส่ง, ค่าเที่ยว, น้ำมัน, หมายเหตุ</p>
               <div className="flex gap-2">
-                <button
-                  onClick={() => { setShowImport(false); setImportRows([]); setImportDone(null); }}
-                  className="btn-secondary text-sm"
-                >
-                  ปิด
-                </button>
+                <button onClick={() => { setShowImport(false); setImportRows([]); setImportDone(null); }}
+                  className="btn-secondary text-sm">ปิด</button>
                 {importRows.filter(r => r.errors.length === 0).length > 0 && !importDone && (
-                  <button
-                    onClick={handleConfirmImport}
-                    disabled={importing}
-                    className="btn-primary text-sm min-w-[120px] justify-center"
-                  >
-                    {importing ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> กำลัง import...</>
-                    ) : (
-                      <><FileUp className="w-4 h-4" /> Import {importRows.filter(r => r.errors.length === 0).length} รายการ</>
-                    )}
+                  <button onClick={handleConfirmImport} disabled={importing}
+                    className="btn-primary text-sm min-w-[120px] justify-center">
+                    {importing
+                      ? <><Loader2 className="w-4 h-4 animate-spin" /> กำลัง import...</>
+                      : <><FileUp className="w-4 h-4" /> Import {importRows.filter(r => r.errors.length === 0).length} รายการ</>
+                    }
                   </button>
                 )}
               </div>
@@ -687,27 +895,20 @@ export default function TripsPage() {
       {/* Odometer Settings Modal */}
       {showOdoSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-2xl shadow-2xl w-80 p-6 animate-fade-in-up">
+          <div className="bg-white rounded-2xl shadow-2xl w-80 p-6">
             <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
               <Settings className="w-5 h-5" /> ตั้งค่าไมล์เริ่มต้น
             </h3>
             <p className="text-sm text-slate-500 mb-3">
               คนขับ: <span className="font-medium">{selectedDriver?.name}</span>
             </p>
-            <input
-              type="number"
-              value={tempOdo}
+            <input type="number" value={tempOdo}
               onChange={e => setTempOdo(e.target.value)}
               className="form-input mb-4"
-              placeholder="เลขไมล์เริ่มต้น..."
-            />
+              placeholder="เลขไมล์เริ่มต้น..." />
             <div className="flex justify-end gap-2">
-              <button onClick={() => setShowOdoSettings(false)} className="btn-secondary text-sm">
-                ยกเลิก
-              </button>
-              <button onClick={handleSaveOdo} className="btn-primary text-sm">
-                บันทึก
-              </button>
+              <button onClick={() => setShowOdoSettings(false)} className="btn-secondary text-sm">ยกเลิก</button>
+              <button onClick={handleSaveOdo} className="btn-primary text-sm">บันทึก</button>
             </div>
           </div>
         </div>
