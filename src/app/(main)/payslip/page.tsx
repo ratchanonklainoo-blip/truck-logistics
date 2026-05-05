@@ -32,21 +32,43 @@ export default function PayslipPage() {
   const invoiceRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Load html2pdf and html2canvas
-    const loadScript = (src: string) => {
-      return new Promise<void>(resolve => {
-        if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
-        const s = document.createElement('script');
-        s.src = src; s.async = true;
-        s.onload = () => resolve();
-        document.body.appendChild(s);
-      });
-    };
+    const loadScript = (src: string) => new Promise<void>(resolve => {
+      if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+      const s = document.createElement('script');
+      s.src = src; s.async = true; s.onload = () => resolve();
+      document.body.appendChild(s);
+    });
     Promise.all([
-      loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js'),
       loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),
+      loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'),
     ]);
   }, []);
+
+  // ── Clone element to top-left (bypass sidebar offset) then capture ──
+  const capturePayslip = async (): Promise<HTMLCanvasElement> => {
+    const el = document.getElementById('payslip-content');
+    if (!el) throw new Error('payslip-content not found');
+
+    // Wrap clone at fixed (0,0) so windowWidth:794 captures it fully
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText =
+      'position:fixed;top:0;left:0;width:794px;background:#fff;' +
+      'z-index:99999;pointer-events:none;overflow:visible;';
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.style.margin = '0';
+    wrapper.appendChild(clone);
+    document.body.appendChild(wrapper);
+
+    const canvas = await (window as any).html2canvas(clone, {
+      scale:           2,
+      useCORS:         true,
+      backgroundColor: '#ffffff',
+      windowWidth:     794,
+      logging:         false,
+    });
+    document.body.removeChild(wrapper);
+    return canvas;
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -92,35 +114,44 @@ export default function PayslipPage() {
 
   // ── Download PDF ──────────────────────────────────────────
   const handleDownloadPDF = async () => {
-    if (typeof (window as any).html2pdf === 'undefined') {
-      alert('ระบบ PDF กำลังโหลด... รอสักครู่แล้วลองใหม่');
+    if (typeof (window as any).html2canvas === 'undefined' ||
+        typeof (window as any).jspdf === 'undefined') {
+      alert('ระบบกำลังโหลด... รอสักครู่แล้วลองใหม่');
       return;
     }
     setIsDownloadPDF(true);
-    const el = document.getElementById('payslip-content');
-    if (!el) return;
+    try {
+      const canvas  = await capturePayslip();
+      const imgData = canvas.toDataURL('image/jpeg', 0.97);
 
-    const opt = {
-      margin:   [6, 6, 6, 6],   // 6mm margin ทุกด้าน ป้องกันขอบตัด
-      filename: `ใบจ่ายเงิน_${selectedDriver?.nickname}_${monthLabel}.pdf`,
-      image:    { type: 'jpeg', quality: 1.0 },
-      html2canvas: {
-        scale:       2,
-        useCORS:     true,
-        windowWidth: 1440,
-        logging:     false,
-        onclone:     (doc: Document) => {
-          const link = doc.createElement('link');
-          link.rel = 'stylesheet';
-          link.href = 'https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap';
-          doc.head.appendChild(link);
-        },
-      },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-    };
+      const { jsPDF } = (window as any).jspdf;
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
 
-    await (window as any).html2pdf().set(opt).from(el).save();
-    setIsDownloadPDF(false);
+      const pageW  = pdf.internal.pageSize.getWidth();   // 210 mm
+      const pageH  = pdf.internal.pageSize.getHeight();  // 297 mm
+      const margin = 5;                                   // 5 mm ทุกด้าน
+      const cW     = pageW - margin * 2;                 // 200 mm
+      const cH     = pageH - margin * 2;                 // 287 mm
+
+      // Scale image (px) → mm: 1px = 25.4/96 mm at 96dpi, scale=2 → 25.4/(96*2)
+      const pxToMm = 25.4 / (96 * 2);
+      let imgW = canvas.width  * pxToMm;  // mm
+      let imgH = canvas.height * pxToMm;  // mm
+
+      // Fit within content area (shrink only, never enlarge)
+      const ratio = Math.min(cW / imgW, cH / imgH, 1);
+      imgW *= ratio;
+      imgH *= ratio;
+
+      // Center horizontally, top-align vertically
+      const x = margin + (cW - imgW) / 2;
+      pdf.addImage(imgData, 'JPEG', x, margin, imgW, imgH);
+      pdf.save(`ใบจ่ายเงิน_${selectedDriver?.nickname}_${monthLabel}.pdf`);
+    } catch (e) {
+      alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
+    } finally {
+      setIsDownloadPDF(false);
+    }
   };
 
   // ── Download PNG ──────────────────────────────────────────
@@ -130,22 +161,15 @@ export default function PayslipPage() {
       return;
     }
     setIsDownloadPNG(true);
-    const el = document.getElementById('payslip-content');
-    if (!el) return;
-
-    const canvas = await (window as any).html2canvas(el, {
-      scale:           2,
-      useCORS:         true,
-      windowWidth:     1440,
-      backgroundColor: '#ffffff',
-      logging:         false,
-    });
-
-    const a   = document.createElement('a');
-    a.href    = canvas.toDataURL('image/png', 1.0);
-    a.download = `ใบจ่ายเงิน_${selectedDriver?.nickname}_${monthLabel}.png`;
-    a.click();
-    setIsDownloadPNG(false);
+    try {
+      const canvas = await capturePayslip();
+      const a = document.createElement('a');
+      a.href     = canvas.toDataURL('image/png', 1.0);
+      a.download = `ใบจ่ายเงิน_${selectedDriver?.nickname}_${monthLabel}.png`;
+      a.click();
+    } finally {
+      setIsDownloadPNG(false);
+    }
   };
 
   if (loading) {
