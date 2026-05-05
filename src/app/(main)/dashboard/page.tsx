@@ -54,15 +54,34 @@ export default function DashboardPage() {
   const [allTrips,    setAllTrips]    = useState<Trip[]>([]);
   const [monthFilter, setMonthFilter] = useState(getCurrentMonthFilter());
   const [loading,     setLoading]     = useState(true);
+  const [jobStats, setJobStats] = useState({
+    active: 0, inProgress: 0, waitingPayment: 0, waitingFuel: 0,
+    todayCash: 0, pendingAdvances: 0,
+  });
 
   useEffect(() => {
     const load = async () => {
-      const [{ data: driverData }, { data: tripData }] = await Promise.all([
+      const [{ data: driverData }, { data: tripData }, { data: jobData }, { data: fuelData }, { data: advData }] = await Promise.all([
         supabase.from('drivers').select('*').is('deleted_at', null).eq('is_active', true),
         supabase.from('trips').select('*').is('deleted_at', null),
+        supabase.from('jobs').select('status, selling_price, date').is('deleted_at', null),
+        supabase.from('fuel_events').select('status').is('deleted_at', null),
+        supabase.from('advance_requests').select('amount').eq('status', 'pending').is('deleted_at', null),
       ]);
       setDrivers(driverData || []);
       setAllTrips(tripData  || []);
+
+      const jobs = jobData || [];
+      const today = new Date().toISOString().slice(0, 10);
+      setJobStats({
+        active:         jobs.filter(j => !['closed'].includes(j.status)).length,
+        inProgress:     jobs.filter(j => j.status === 'in_progress').length,
+        waitingPayment: jobs.filter(j => j.status === 'waiting_payment').length,
+        waitingFuel:    (fuelData || []).filter(f => ['waiting_approval','needs_review'].includes(f.status)).length,
+        todayCash:      jobs.filter(j => j.status === 'closed' && j.date === today).reduce((s, j) => s + (j.selling_price || 0), 0),
+        pendingAdvances:(advData || []).length,
+      });
+
       setLoading(false);
     };
     load();
@@ -70,6 +89,8 @@ export default function DashboardPage() {
     const channel = supabase
       .channel('dashboard-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fuel_events' }, () => load())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -198,6 +219,25 @@ export default function DashboardPage() {
             {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
+      </div>
+
+      {/* Live Job Status Row */}
+      <div className="grid grid-cols-3 lg:grid-cols-6 gap-3">
+        {[
+          { label: 'งานที่เปิดอยู่',   value: jobStats.active,          color: 'bg-blue-600',   sub: 'ทุกสถานะ' },
+          { label: 'กำลังวิ่ง',        value: jobStats.inProgress,      color: 'bg-orange-500', sub: 'บนถนนตอนนี้' },
+          { label: 'รอรับเงิน',        value: jobStats.waitingPayment,  color: 'bg-purple-500', sub: 'ลูกค้าค้างจ่าย' },
+          { label: 'รอตรวจน้ำมัน',    value: jobStats.waitingFuel,     color: 'bg-yellow-500', sub: 'รออนุมัติ' },
+          { label: 'รายได้วันนี้',     value: formatCurrency(jobStats.todayCash), color: 'bg-green-600', sub: 'งานปิดวันนี้' },
+          { label: 'รออนุมัติเบิก',   value: jobStats.pendingAdvances, color: 'bg-red-500',    sub: 'advance requests' },
+        ].map(({ label, value, color, sub }) => (
+          <div key={label} className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm text-center">
+            <div className={`w-8 h-1.5 rounded-full ${color} mx-auto mb-2`} />
+            <div className="text-lg font-bold text-slate-800">{value}</div>
+            <div className="text-xs font-semibold text-slate-600 leading-tight">{label}</div>
+            <div className="text-[10px] text-slate-400 mt-0.5">{sub}</div>
+          </div>
+        ))}
       </div>
 
       {/* KPI Cards */}
