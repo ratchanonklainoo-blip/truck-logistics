@@ -241,14 +241,15 @@ export default function PayslipPage() {
             ref={invoiceRef}
             style={{
               fontFamily:      "'Sarabun', sans-serif",
-              fontSize:        `${PDF_CONFIG.TABLE_FONT_SIZE}px`,
+              fontSize:        '11px',
               backgroundColor: '#ffffff',
               width:           `${PDF_CONFIG.A4_WIDTH_PX}px`,
-              minHeight:       '1123px',        // A4 height at 96dpi
-              padding:         '40px 50px',
+              height:          '1123px',   // A4 height — force single page
+              padding:         '28px 36px',
               boxSizing:       'border-box',
-              lineHeight:      1.5,
+              lineHeight:      1.4,
               color:           '#111827',
+              overflow:        'hidden',
             }}
           >
             {/* Embed font for PDF rendering */}
@@ -258,56 +259,44 @@ export default function PayslipPage() {
             `}</style>
 
             {/* ── Header ── */}
-            <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-              {/* ★ ชื่อบริษัท: ดึงจาก COMPANY.name constant เสมอ ★ */}
-              <h1 style={{
-                fontSize:   `${PDF_CONFIG.COMPANY_NAME_FONT_SIZE}px`, // 22px
-                fontWeight: 800,
-                margin:     '0 0 4px 0',
-                letterSpacing: '0.5px',
-              }}>
-                {COMPANY.name}
-              </h1>
-              <p style={{
-                fontSize:   `${PDF_CONFIG.COMPANY_ADDR_FONT_SIZE}px`, // 13px
-                color:      '#374151',
-                margin:     '0 0 16px 0',
-              }}>
-                ที่อยู่: {COMPANY.address}
-              </p>
-              <div style={{ borderBottom: '2px solid #111827', display: 'inline-block', paddingBottom: '4px' }}>
-                <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>
-                  ใบจ่ายเงินเดือนรถพ่วง
-                </h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+              <div>
+                <h1 style={{ fontSize: '20px', fontWeight: 800, margin: '0 0 2px 0' }}>
+                  {COMPANY.name}
+                </h1>
+                <p style={{ fontSize: '11px', color: '#374151', margin: 0 }}>
+                  {COMPANY.address}
+                </p>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ borderBottom: '2px solid #111827', paddingBottom: '2px', marginBottom: '4px' }}>
+                  <h2 style={{ fontSize: '15px', fontWeight: 700, margin: 0 }}>ใบจ่ายเงินเดือนรถพ่วง</h2>
+                </div>
+                <p style={{ fontSize: '11px', margin: '2px 0' }}><strong>ประจำเดือน:</strong> {monthLabel}</p>
+                <p style={{ fontSize: '11px', margin: '2px 0' }}><strong>วันที่ออกเอกสาร:</strong> {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
               </div>
             </div>
 
             {/* ── Info row ── */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', fontSize: '13px' }}>
-              <div style={{ lineHeight: 2 }}>
-                <p><strong style={{ display: 'inline-block', width: '90px' }}>คนขับ:</strong> {selectedDriver?.name || '-'}</p>
-                <p><strong style={{ display: 'inline-block', width: '90px' }}>ทะเบียน:</strong> {selectedDriver?.license_plate || '-'}</p>
-                <p><strong style={{ display: 'inline-block', width: '90px' }}>เลขบัญชี:</strong> {selectedDriver?.bank_account || '-'}</p>
-              </div>
-              <div style={{ textAlign: 'right', lineHeight: 2 }}>
-                <p><strong>ประจำเดือน:</strong> {monthLabel}</p>
-                <p><strong>วันที่ออกเอกสาร:</strong> {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
-              </div>
+            <div style={{ display: 'flex', gap: '24px', marginBottom: '10px', fontSize: '11px', backgroundColor: '#F9FAFB', padding: '6px 10px', borderRadius: '4px', border: '1px solid #E5E7EB' }}>
+              <p style={{ margin: 0 }}><strong>คนขับ:</strong> {selectedDriver?.name || '-'}</p>
+              <p style={{ margin: 0 }}><strong>ทะเบียน:</strong> {selectedDriver?.license_plate || '-'}</p>
+              <p style={{ margin: 0 }}><strong>เลขบัญชี:</strong> {selectedDriver?.bank_account || '-'}</p>
             </div>
 
             {/* ── Trip table ── */}
             <table style={{
               width:          '100%',
               borderCollapse: 'collapse',
-              fontSize:       `${PDF_CONFIG.TABLE_FONT_SIZE}px`, // 13px — ขั้นต่ำ
-              marginBottom:   '24px',
+              fontSize:       '11px',
+              marginBottom:   '10px',
             }}>
               <thead>
-                <tr style={{ backgroundColor: '#F3F4F6' }}>
-                  {['ลำดับ','วัน/เดือน/ปี','สินค้า','ต้นทาง','ปลายทาง','ค่าเที่ยว','เบิก','หมายเหตุ'].map((h, i) => (
+                <tr style={{ backgroundColor: '#1E3A5F', color: '#fff' }}>
+                  {['#','วันที่','สินค้า','ต้นทาง','ปลายทาง','ค่าเที่ยว','เบิก','หมายเหตุ'].map((h, i) => (
                     <th key={h} style={{
-                      border:   '1px solid #111827',
-                      padding:  '6px 8px',
+                      border:    '1px solid #374151',
+                      padding:   '4px 5px',
                       fontWeight: 700,
                       textAlign: i === 5 || i === 6 ? 'right' : 'center',
                       whiteSpace: 'nowrap',
@@ -317,44 +306,44 @@ export default function PayslipPage() {
               </thead>
               <tbody>
                 {billableTrips.map((trip, idx) => (
-                  <tr key={trip.id}>
-                    <td style={{ border:'1px solid #111827', padding:'5px 8px', textAlign:'center' }}>{idx + 1}</td>
-                    <td style={{ border:'1px solid #111827', padding:'5px 8px', textAlign:'center', whiteSpace:'nowrap' }}>
+                  <tr key={trip.id} style={{ backgroundColor: idx % 2 === 1 ? '#F9FAFB' : '#fff' }}>
+                    <td style={{ border:'1px solid #D1D5DB', padding:'2px 5px', textAlign:'center' }}>{idx + 1}</td>
+                    <td style={{ border:'1px solid #D1D5DB', padding:'2px 5px', textAlign:'center', whiteSpace:'nowrap' }}>
                       {formatThaiDate(trip.date, true)}
                     </td>
-                    <td style={{ border:'1px solid #111827', padding:'5px 8px' }}>{trip.product || '-'}</td>
-                    <td style={{ border:'1px solid #111827', padding:'5px 8px', textAlign:'center' }}>{trip.origin}</td>
-                    <td style={{ border:'1px solid #111827', padding:'5px 8px', textAlign:'center' }}>{trip.destination}</td>
-                    <td style={{ border:'1px solid #111827', padding:'5px 8px', textAlign:'right', fontWeight: 600 }}>
+                    <td style={{ border:'1px solid #D1D5DB', padding:'2px 5px' }}>{trip.product || '-'}</td>
+                    <td style={{ border:'1px solid #D1D5DB', padding:'2px 5px', textAlign:'center' }}>{trip.origin || '-'}</td>
+                    <td style={{ border:'1px solid #D1D5DB', padding:'2px 5px', textAlign:'center' }}>{trip.destination || '-'}</td>
+                    <td style={{ border:'1px solid #D1D5DB', padding:'2px 5px', textAlign:'right', fontWeight: 600 }}>
                       {trip.trip_pay > 0 ? formatNumber(trip.trip_pay) : '-'}
                     </td>
-                    <td style={{ border:'1px solid #111827', padding:'5px 8px', textAlign:'right', color:'#DC2626' }}>
+                    <td style={{ border:'1px solid #D1D5DB', padding:'2px 5px', textAlign:'right', color:'#DC2626' }}>
                       {trip.withdraw > 0 ? formatNumber(trip.withdraw) : '-'}
                     </td>
-                    <td style={{ border:'1px solid #111827', padding:'5px 8px' }}>{trip.remarks}</td>
+                    <td style={{ border:'1px solid #D1D5DB', padding:'2px 5px' }}>{trip.remarks || ''}</td>
                   </tr>
                 ))}
-                {/* Empty rows to fill to minimum 18 rows */}
+                {/* Empty rows only when data is sparse */}
                 {Array.from({ length: emptyRowCount }).map((_, i) => (
-                  <tr key={`empty-${i}`} style={{ height: '32px' }}>
+                  <tr key={`empty-${i}`} style={{ height: '20px' }}>
                     {Array.from({ length: 8 }).map((_, j) => (
-                      <td key={j} style={{ border: '1px solid #111827' }} />
+                      <td key={j} style={{ border: '1px solid #D1D5DB' }} />
                     ))}
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr style={{ backgroundColor: '#F3F4F6', fontWeight: 700 }}>
-                  <td colSpan={5} style={{ border:'1px solid #111827', padding:'6px 12px', textAlign:'right' }}>
+                <tr style={{ backgroundColor: '#1E3A5F', color: '#fff', fontWeight: 700 }}>
+                  <td colSpan={5} style={{ border:'1px solid #374151', padding:'4px 10px', textAlign:'right' }}>
                     รวมเป็นเงิน / Total
                   </td>
-                  <td style={{ border:'1px solid #111827', padding:'6px 8px', textAlign:'right' }}>
+                  <td style={{ border:'1px solid #374151', padding:'4px 5px', textAlign:'right' }}>
                     {formatNumber(totals.trip_pay)}
                   </td>
-                  <td style={{ border:'1px solid #111827', padding:'6px 8px', textAlign:'right', color:'#DC2626' }}>
+                  <td style={{ border:'1px solid #374151', padding:'4px 5px', textAlign:'right', color:'#FCA5A5' }}>
                     {formatNumber(totals.withdraw)}
                   </td>
-                  <td style={{ border:'1px solid #111827', backgroundColor:'#E5E7EB' }} />
+                  <td style={{ border:'1px solid #374151' }} />
                 </tr>
               </tfoot>
             </table>
@@ -362,44 +351,48 @@ export default function PayslipPage() {
             {/* ── Summary box ── */}
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <div style={{
-                width:   '320px',
-                border:  '2px solid #111827',
-                padding: '16px',
-                backgroundColor: '#F9FAFB',
-                fontSize: '13px',
+                width:   '300px',
+                border:  '2px solid #1E3A5F',
+                borderRadius: '6px',
+                overflow: 'hidden',
+                fontSize: '11px',
               }}>
-                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'6px' }}>
-                  <span>รายรับรวม (ค่าเที่ยว):</span>
-                  <strong>{formatNumber(totals.trip_pay)} บาท</strong>
+                <div style={{ backgroundColor: '#1E3A5F', color: '#fff', padding: '5px 12px', fontWeight: 700, fontSize: '12px' }}>
+                  สรุปการจ่ายเงิน
                 </div>
-                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'6px', color:'#059669' }}>
-                  <span>+ เงินเดือน:</span>
-                  <span>{formatNumber(salary)} บาท</span>
-                </div>
-                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'8px', fontWeight:700, borderTop:'1px solid #D1D5DB', paddingTop:'6px' }}>
-                  <span>รวมรายรับทั้งหมด:</span>
-                  <span>{formatNumber(grossIncome)} บาท</span>
-                </div>
-                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'6px', color:'#DC2626' }}>
-                  <span>- หักเบิก:</span>
-                  <span>{formatNumber(totals.withdraw)} บาท</span>
-                </div>
-                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'8px', color:'#DC2626' }}>
-                  <span>- หักประกันสังคม:</span>
-                  <span>{formatNumber(socialSec)} บาท</span>
-                </div>
-                <div style={{
-                  display:'flex', justifyContent:'space-between',
-                  borderTop: '2px solid #111827', paddingTop:'8px',
-                  fontSize: '18px', fontWeight: 800,
-                }}>
-                  <span>คงเหลือสุทธิ:</span>
-                  <span style={{
-                    color: '#1E3A5F',
-                    borderBottom: '3px double #1E3A5F',
+                <div style={{ padding: '10px 12px', backgroundColor: '#F9FAFB' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'4px' }}>
+                    <span>รายรับรวม (ค่าเที่ยว):</span>
+                    <strong>{formatNumber(totals.trip_pay)} บาท</strong>
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'4px', color:'#059669' }}>
+                    <span>+ เงินเดือน:</span>
+                    <span>{formatNumber(salary)} บาท</span>
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'6px', fontWeight:700, borderTop:'1px solid #D1D5DB', paddingTop:'4px' }}>
+                    <span>รวมรายรับทั้งหมด:</span>
+                    <span>{formatNumber(grossIncome)} บาท</span>
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'4px', color:'#DC2626' }}>
+                    <span>- หักเบิก:</span>
+                    <span>{formatNumber(totals.withdraw)} บาท</span>
+                  </div>
+                  {socialSec > 0 && (
+                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'4px', color:'#DC2626' }}>
+                      <span>- หักประกันสังคม:</span>
+                      <span>{formatNumber(socialSec)} บาท</span>
+                    </div>
+                  )}
+                  <div style={{
+                    display:'flex', justifyContent:'space-between',
+                    borderTop: '2px solid #1E3A5F', paddingTop:'6px', marginTop:'4px',
+                    fontSize: '15px', fontWeight: 800,
                   }}>
-                    {formatNumber(netPay)} บาท
-                  </span>
+                    <span>คงเหลือสุทธิ:</span>
+                    <span style={{ color: '#1E3A5F', borderBottom: '3px double #1E3A5F' }}>
+                      {formatNumber(netPay)} บาท
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -407,16 +400,16 @@ export default function PayslipPage() {
             {/* ── Signatures ── */}
             <div style={{
               display: 'flex', justifyContent: 'space-around',
-              marginTop: '60px', textAlign: 'center',
-              fontSize: '13px', fontWeight: 600,
+              marginTop: '28px', textAlign: 'center',
+              fontSize: '11px', fontWeight: 600,
             }}>
               <div>
-                <div style={{ borderBottom: '1px solid #111827', width: '180px', marginBottom: '8px' }} />
-                <p>ผู้จ่ายเงิน / Authorized By</p>
+                <div style={{ borderBottom: '1px solid #111827', width: '160px', marginBottom: '6px' }} />
+                <p style={{ margin: 0 }}>ผู้จ่ายเงิน / Authorized By</p>
               </div>
               <div>
-                <div style={{ borderBottom: '1px solid #111827', width: '180px', marginBottom: '8px' }} />
-                <p>ผู้รับเงิน / Recipient</p>
+                <div style={{ borderBottom: '1px solid #111827', width: '160px', marginBottom: '6px' }} />
+                <p style={{ margin: 0 }}>ผู้รับเงิน / Recipient</p>
               </div>
             </div>
           </div>

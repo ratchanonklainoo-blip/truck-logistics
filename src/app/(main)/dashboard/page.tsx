@@ -8,7 +8,7 @@ import {
 } from 'recharts';
 import {
   Truck, Fuel, TrendingUp, DollarSign, Users,
-  AlertCircle, BarChart3, Gauge, Building2, Calendar,
+  AlertCircle, BarChart3, Gauge, Building2, Calendar, Receipt,
 } from 'lucide-react';
 import type { Trip, Driver } from '@/types';
 import {
@@ -113,6 +113,25 @@ export default function DashboardPage() {
       };
     }),
   [drivers, monthTrips]);
+
+  // ── Other expenses breakdown ──────────────────────────────
+  const otherExpenseBreakdown = useMemo(() => {
+    const map = new Map<string, { total: number; count: number; byDriver: Record<string, number> }>();
+    monthTrips.forEach(t => {
+      if (!t.other_cost || t.other_cost === 0) return;
+      const key = t.other_item?.trim() || 'ไม่ระบุรายการ';
+      const driver = drivers.find(d => d.id === t.driver_id);
+      const driverName = driver?.nickname || '-';
+      if (!map.has(key)) map.set(key, { total: 0, count: 0, byDriver: {} });
+      const entry = map.get(key)!;
+      entry.total += t.other_cost;
+      entry.count += 1;
+      entry.byDriver[driverName] = (entry.byDriver[driverName] || 0) + t.other_cost;
+    });
+    return Array.from(map.entries())
+      .map(([item, data]) => ({ item, ...data }))
+      .sort((a, b) => b.total - a.total);
+  }, [monthTrips, drivers]);
 
   // ── 6-month trend ─────────────────────────────────────────
   const trendData = useMemo(() => {
@@ -256,6 +275,74 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* Other Expenses Breakdown */}
+      {otherExpenseBreakdown.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+            <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+              <Receipt className="w-5 h-5 text-orange-500" />
+              รายละเอียดค่าอื่นๆ — {monthLabel}
+            </h3>
+            <span className="text-sm font-bold text-orange-600">
+              รวม: {formatCurrency(companyStats.totalOther)}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-xs font-semibold uppercase">
+                  <th className="px-5 py-3 text-left">รายการ</th>
+                  {drivers.map(d => (
+                    <th key={d.id} className="px-4 py-3 text-right">{d.nickname}</th>
+                  ))}
+                  <th className="px-4 py-3 text-right">ครั้ง</th>
+                  <th className="px-5 py-3 text-right">รวม</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {otherExpenseBreakdown.map((row, i) => (
+                  <tr key={row.item} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                    <td className="px-5 py-3 font-medium text-slate-700">{row.item}</td>
+                    {drivers.map(d => (
+                      <td key={d.id} className="px-4 py-3 text-right text-slate-600">
+                        {row.byDriver[d.nickname]
+                          ? formatCurrency(row.byDriver[d.nickname])
+                          : <span className="text-slate-300">—</span>}
+                      </td>
+                    ))}
+                    <td className="px-4 py-3 text-right text-slate-400 text-xs">{row.count} ครั้ง</td>
+                    <td className="px-5 py-3 text-right font-bold text-orange-600">
+                      {formatCurrency(row.total)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-orange-50 border-t-2 border-orange-200 font-bold">
+                  <td className="px-5 py-3 text-slate-700">รวมค่าอื่นๆ ทั้งหมด</td>
+                  {drivers.map(d => {
+                    const dTotal = otherExpenseBreakdown.reduce(
+                      (s, r) => s + (r.byDriver[d.nickname] || 0), 0
+                    );
+                    return (
+                      <td key={d.id} className="px-4 py-3 text-right text-orange-700">
+                        {dTotal > 0 ? formatCurrency(dTotal) : <span className="text-slate-300 font-normal">—</span>}
+                      </td>
+                    );
+                  })}
+                  <td className="px-4 py-3 text-right text-slate-400 text-xs">
+                    {otherExpenseBreakdown.reduce((s, r) => s + r.count, 0)} ครั้ง
+                  </td>
+                  <td className="px-5 py-3 text-right text-orange-600 text-base">
+                    {formatCurrency(companyStats.totalOther)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
