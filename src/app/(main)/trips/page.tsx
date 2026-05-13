@@ -535,69 +535,109 @@ export default function TripsPage() {
         </div>
       </div>
 
-      {/* Driver Selector + Summary */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-wrap gap-4 items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Users className="w-5 h-5 text-blue-600" />
-          <select
-            className="form-input w-64 font-medium"
-            value={selectedDriver?.id || ''}
-            onChange={e => setSelectedDriver(drivers.find(d => d.id === e.target.value) || null)}
-          >
-            {drivers.map(d => (
-              <option key={d.id} value={d.id}>
-                คนขับ: {d.nickname} ({d.name})
-              </option>
-            ))}
-          </select>
-          <div className="text-sm text-slate-500">
-            ทะเบียน: <span className="font-medium text-slate-700">{selectedDriver?.license_plate}</span>
-          </div>
-          <div className="text-sm text-slate-500">
-            ไมล์เริ่มต้น: <span className="font-semibold text-blue-700">{formatNumber(initialOdometer)}</span>
-            <button
-              onClick={() => { setTempOdo(String(initialOdometer)); setShowOdoSettings(true); }}
-              className="text-blue-400 hover:text-blue-600 text-xs ml-1 underline"
-            >(แก้ไข)</button>
-          </div>
-        </div>
-
-        {/* Driver stats */}
-        <div className="flex gap-4 flex-wrap">
-          {[
-            { icon: Truck,       label: 'เที่ยว',       value: formatNumber(driverTotals.trips),      color: 'text-blue-600' },
-            { icon: Fuel,        label: 'น้ำมัน',       value: formatCurrency(driverTotals.fuel_cost), color: 'text-cyan-600' },
-            { icon: TrendingUp,  label: 'ค่าเที่ยว',   value: formatCurrency(driverTotals.trip_pay),  color: 'text-green-600' },
-            { icon: DollarSign,  label: 'สุทธิ',        value: formatCurrency(driverNetPay),           color: 'text-indigo-700' },
-          ].map(({ icon: Icon, label, value, color }) => (
-            <div key={label} className="flex items-center gap-2">
-              <Icon className={`w-4 h-4 ${color}`} />
-              <div>
-                <p className="text-xs text-slate-400">{label}</p>
-                <p className={`text-sm font-bold ${color}`}>{value}</p>
-              </div>
+      {/* Driver Selector Bar */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3 p-4 border-b border-slate-100">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center flex-shrink-0">
+              <Users className="w-4 h-4 text-white" />
             </div>
-          ))}
+            <select
+              className="form-input font-semibold text-slate-800 flex-1 min-w-0"
+              value={selectedDriver?.id || ''}
+              onChange={e => setSelectedDriver(drivers.find(d => d.id === e.target.value) || null)}
+            >
+              {drivers.map(d => (
+                <option key={d.id} value={d.id}>{d.nickname} — {d.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-4 text-sm flex-shrink-0">
+            <div className="text-slate-500">
+              ทะเบียน: <span className="font-semibold text-slate-800">{selectedDriver?.license_plate || '—'}</span>
+            </div>
+            <div className="text-slate-500">
+              ไมล์เริ่มต้น: <span className="font-semibold text-blue-700">{formatNumber(initialOdometer)}</span>
+              <button
+                onClick={() => { setTempOdo(String(initialOdometer)); setShowOdoSettings(true); }}
+                className="ml-1 text-blue-400 hover:text-blue-600 text-xs underline"
+              >(แก้ไข)</button>
+            </div>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            <button onClick={handleExportCSV} className="btn-secondary text-sm py-1.5">
+              <Download className="w-4 h-4" /> Export
+            </button>
+            <button onClick={() => fileInputRef.current?.click()} className="btn-primary text-sm py-1.5">
+              <FileUp className="w-4 h-4" /> Import
+            </button>
+            <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleFileChange} />
+          </div>
         </div>
 
-        {/* Export/Import */}
-        <div className="flex gap-2">
-          <button onClick={handleExportCSV} className="btn-secondary text-sm py-1.5">
-            <Download className="w-4 h-4" /> Export CSV
-          </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="btn-primary text-sm py-1.5"
-          >
-            <FileUp className="w-4 h-4" /> Import CSV
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={handleFileChange}
-          />
+        {/* Driver KPI Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-0 divide-x divide-y divide-slate-100">
+          {/* จำนวนเที่ยว */}
+          <div className="p-4 text-center">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <Truck className="w-3.5 h-3.5 text-blue-400" />
+              <p className="text-xs text-slate-400 font-medium">จำนวนเที่ยว</p>
+            </div>
+            <p className="text-2xl font-bold text-blue-600">{formatNumber(driverTotals.trips)}</p>
+            <p className="text-xs text-slate-400 mt-0.5">เที่ยว</p>
+          </div>
+
+          {/* ระยะทาง */}
+          <div className="p-4 text-center">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <TrendingUp className="w-3.5 h-3.5 text-slate-400" />
+              <p className="text-xs text-slate-400 font-medium">ระยะทาง</p>
+            </div>
+            <p className="text-2xl font-bold text-slate-700">{formatNumber(driverTotals.distance)}</p>
+            <p className="text-xs text-slate-400 mt-0.5">กม.</p>
+          </div>
+
+          {/* อัตราสิ้นเปลือง */}
+          <div className="p-4 text-center">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <Fuel className="w-3.5 h-3.5 text-cyan-400" />
+              <p className="text-xs text-slate-400 font-medium">อัตราสิ้นเปลือง</p>
+            </div>
+            <p className="text-2xl font-bold text-cyan-600">
+              {avgEfficiency > 0 ? avgEfficiency.toFixed(1) : '—'}
+            </p>
+            <p className="text-xs text-slate-400 mt-0.5">กม./ลิตร</p>
+          </div>
+
+          {/* ค่าน้ำมัน */}
+          <div className="p-4 text-center bg-red-50/40">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <Fuel className="w-3.5 h-3.5 text-red-400" />
+              <p className="text-xs text-red-400 font-medium">ค่าน้ำมัน</p>
+            </div>
+            <p className="text-2xl font-bold text-red-500">{formatCurrency(driverTotals.fuel_cost)}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{driverTotals.fuel_litres > 0 ? `${formatNumber(driverTotals.fuel_litres)} ลิตร` : '—'}</p>
+          </div>
+
+          {/* ค่าเที่ยว */}
+          <div className="p-4 text-center bg-green-50/40">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <DollarSign className="w-3.5 h-3.5 text-green-500" />
+              <p className="text-xs text-green-500 font-medium">ค่าเที่ยว</p>
+            </div>
+            <p className="text-2xl font-bold text-green-600">{formatCurrency(driverTotals.trip_pay)}</p>
+            <p className="text-xs text-slate-400 mt-0.5">ค่าคอมมิชชั่น</p>
+          </div>
+
+          {/* เงินสุทธิ */}
+          <div className="p-4 text-center bg-indigo-50/60 rounded-br-2xl">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <DollarSign className="w-3.5 h-3.5 text-indigo-500" />
+              <p className="text-xs text-indigo-500 font-semibold">เงินสุทธิ</p>
+            </div>
+            <p className="text-2xl font-bold text-indigo-700">{formatCurrency(driverNetPay)}</p>
+            <p className="text-xs text-slate-400 mt-0.5">หลังหักทุกอย่าง</p>
+          </div>
         </div>
       </div>
 
