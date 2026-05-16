@@ -2,7 +2,9 @@ import { BUDDHIST_ERA_OFFSET, THAI_MONTHS, THAI_MONTHS_SHORT, ROUND_DOWN_TO } fr
 import type { MonthFilter, TripTotals, Trip } from '@/types';
 
 // ─── ปัดลง (ห้ามปัดขึ้น) ────────────────────────────────────
+// ใช้กับเลขบวกเท่านั้น — เลขติดลบ (คนขับค้างชำระ) คงค่าตรง ไม่ปัดออกจากศูนย์
 export function floorToNearest10(value: number): number {
+  if (value < 0) return value;
   return Math.floor(value / ROUND_DOWN_TO) * ROUND_DOWN_TO;
 }
 

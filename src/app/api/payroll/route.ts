@@ -3,8 +3,10 @@ import { createClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
-// Floor to nearest 10 (NEVER round up)
+// Floor to nearest 10 for positive numbers only (NEVER round up)
+// Negative balances (driver owes back) kept exact
 function floorTen(n: number): number {
+  if (n < 0) return n;
   return Math.floor(n / 10) * 10;
 }
 
@@ -54,12 +56,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'driver_id and month_year required' }, { status: 400 });
   }
 
-  // Get driver base info
   const { data: driver } = await supabase
     .from('drivers').select('*').eq('id', driver_id).single();
   if (!driver) return NextResponse.json({ error: 'Driver not found' }, { status: 404 });
 
-  // Get trips for this driver/month
   const [yearStr, monthStr] = month_year.split('-');
   const dateFrom = `${yearStr}-${monthStr}-01`;
   const lastDay = new Date(Number(yearStr), Number(monthStr), 0).getDate();
@@ -73,7 +73,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     .lte('date', dateTo)
     .is('deleted_at', null);
 
-  // Get approved/paid advances
   const { data: advances } = await supabase
     .from('advance_requests')
     .select('amount')
@@ -85,7 +84,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const tripList = trips || [];
   const advanceList = advances || [];
 
-  // commission = sum(transport_price * 0.10) but we use trip_pay if set
   const totalCommission = tripList.reduce((s, t) => {
     return s + (t.trip_pay > 0 ? t.trip_pay : t.transport_price * 0.10);
   }, 0);
@@ -98,27 +96,30 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const grossPay = baseSalary + totalCommission;
   const netPayRaw = grossPay - totalAdvance - socialSecurity;
-  const netPay = floorTen(Math.max(0, netPayRaw));
+  const netPay = floorTen(netPayRaw);
 
-  // Upsert payroll record
   const { data, error } = await supabase
     .from('payrolls')
-    .upsert({
-      driver_id,
-      month_year,
-      base_salary: baseSalary,
-      total_commission: Math.round(totalCommission * 100) / 100,
-      total_advance: totalAdvance,
-      social_security: socialSecurity,
-      other_deductions: 0,
-      other_additions: 0,
-      gross_pay: Math.round(grossPay * 100) / 100,
-      net_pay: netPay,
-      trip_count: tripCount,
-      total_distance: Math.round(totalDistance * 100) / 100,
-      status: 'draft',
-    }, { onConflict: 'driver_id,month_year' })
-    .select().single();
+    .upsert(
+      {
+        driver_id,
+        month_year,
+        base_salary: baseSalary,
+        total_commission: Math.round(totalCommission * 100) / 100,
+        total_advance: totalAdvance,
+        social_security: socialSecurity,
+        other_deductions: 0,
+        other_additions: 0,
+        gross_pay: Math.round(grossPay * 100) / 100,
+        net_pay: netPay,
+        trip_count: tripCount,
+        total_distance: Math.round(totalDistance * 100) / 100,
+        status: 'draft',
+      },
+      { onConflict: 'driver_id,month_year' }
+    )
+    .select()
+    .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ data }, { status: 201 });
