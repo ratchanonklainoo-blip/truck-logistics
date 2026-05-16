@@ -107,7 +107,31 @@ export default function PayrollPage() {
     const drMap: Record<string, Driver> = {};
     drList.forEach(d => { drMap[d.id] = d; });
     const enriched = (pay || []).map(p => ({ ...p, driver: drMap[p.driver_id] || null }));
-    setPayrolls(enriched as Payroll[]);
+
+    // Auto-sync: recalculate draft payrolls whose driver data changed (social_security or base_salary)
+    const stale = enriched.filter(p =>
+      p.status === 'draft' && p.driver && (
+        p.social_security !== p.driver.social_security ||
+        p.base_salary !== p.driver.base_salary
+      )
+    );
+    if (stale.length > 0) {
+      await Promise.all(stale.map(p =>
+        fetch('/api/payroll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ driver_id: p.driver_id, month_year: selectedMonth }),
+        })
+      ));
+      // Re-fetch after recalculation
+      const { data: refreshed } = await supabase.from('payrolls').select('*')
+        .is('deleted_at', null).eq('month_year', selectedMonth)
+        .order('created_at', { ascending: true });
+      const re = (refreshed || []).map(p => ({ ...p, driver: drMap[p.driver_id] || null }));
+      setPayrolls(re as Payroll[]);
+    } else {
+      setPayrolls(enriched as Payroll[]);
+    }
     setLoading(false);
   }, [supabase, selectedMonth]);
 
