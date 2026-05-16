@@ -70,26 +70,43 @@ export default function DriversPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  const [saveError, setSaveError] = useState('');
+  const [saving, setSaving] = useState(false);
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSaveError(''); setSaving(true);
     const payload = {
       driver_key: form.driver_key,
       name: form.name, nickname: form.nickname,
       license_plate: form.license_plate,
       bank_account: form.bank_account || null,
-      social_security: Number(form.social_security) || 750,
+      social_security: Number(form.social_security) || 0,
       base_salary: Number(form.base_salary) || 5000,
       commission_rate: Number(form.commission_rate) || 0.10,
       monthly_advance_limit: Number(form.monthly_advance_limit) || 5000,
       line_user_id: form.line_user_id || null,
+      updated_at: new Date().toISOString(),
     };
-    if (editing) {
-      await supabase.from('drivers').update(payload).eq('id', editing.id);
-    } else {
-      await supabase.from('drivers').insert({ ...payload, is_active: true });
+    try {
+      let error;
+      if (editing) {
+        ({ error } = await supabase.from('drivers').update(payload).eq('id', editing.id));
+      } else {
+        ({ error } = await supabase.from('drivers').insert({ ...payload, is_active: true }));
+      }
+      if (error) {
+        setSaveError(`บันทึกไม่สำเร็จ: ${error.message}`);
+        setSaving(false);
+        return;
+      }
+      setShowForm(false); setEditing(null); setForm(EMPTY_FORM);
+      await load();
+    } catch (err) {
+      setSaveError('เกิดข้อผิดพลาด กรุณาลองใหม่');
+    } finally {
+      setSaving(false);
     }
-    setShowForm(false); setEditing(null); setForm(EMPTY_FORM);
-    load();
   };
 
   const handleEdit = (d: Driver) => {
@@ -392,12 +409,20 @@ export default function DriversPage() {
                 </div>
               </div>
 
+              {saveError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg">
+                  {saveError}
+                </div>
+              )}
               <div className="flex gap-3 justify-end pt-2 border-t border-slate-100">
-                <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">
+                <button type="button" onClick={() => { setShowForm(false); setSaveError(''); }} className="btn-secondary">
                   ยกเลิก
                 </button>
-                <button type="submit" className="btn-primary">
-                  <Check className="w-4 h-4" /> บันทึก
+                <button type="submit" disabled={saving} className="btn-primary">
+                  {saving
+                    ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    : <Check className="w-4 h-4" />}
+                  {saving ? 'กำลังบันทึก...' : 'บันทึก'}
                 </button>
               </div>
             </form>
