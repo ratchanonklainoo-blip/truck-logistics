@@ -240,11 +240,13 @@ function UploadDocModal({ drivers, onClose, onSaved }: { drivers: Driver[]; onCl
 
     if (file) {
       const ext = file.name.split('.').pop();
-      const path = `vehicle-docs/${finalPlate}/${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from('vehicle-docs').upload(path, file);
+      // sanitize plate: remove spaces, Thai chars, special chars for storage key
+      const safePlate = finalPlate.replace(/[^a-zA-Z0-9\-]/g, '_');
+      const storagePath = `vehicle-docs/${safePlate}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('vehicle-docs').upload(storagePath, file);
       if (upErr) { setError(`อัปโหลดไฟล์ไม่สำเร็จ: ${upErr.message}`); setSaving(false); return; }
-      filePath = path;
-      const { data: urlData } = supabase.storage.from('vehicle-docs').getPublicUrl(path);
+      filePath = storagePath;
+      const { data: urlData } = supabase.storage.from('vehicle-docs').getPublicUrl(storagePath);
       fileUrl = urlData.publicUrl;
     }
 
