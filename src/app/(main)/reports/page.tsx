@@ -237,73 +237,92 @@ export default function ReportsPage() {
     year: 'numeric', month: 'long', day: 'numeric',
   });
 
+  const exportPDF = async () => {
+    const el = document.getElementById('print-area');
+    if (!el) return;
+    // Temporarily show the print area
+    el.style.display = 'block';
+    el.style.visibility = 'visible';
+    try {
+      const html2pdf = (await import('html2pdf.js')).default;
+      await html2pdf()
+        .set({
+          margin: [6, 8, 6, 8],
+          filename: `รายงาน-${displayMonthYear(monthYear)}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, logging: false },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+        })
+        .from(el)
+        .save();
+    } finally {
+      el.style.display = '';
+      el.style.visibility = '';
+    }
+  };
+
   return (
     <div className="p-6 space-y-5">
       {/* ── Print CSS ── */}
       <style dangerouslySetInnerHTML={{ __html: `
-@media screen { #print-area { display: none !important; } }
-@media print {
-  @page { size: A4 landscape; margin: 6mm 8mm; }
-  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  html, body { height: auto !important; margin: 0 !important; padding: 0 !important; }
-  body > div, main, aside, nav { display: none !important; }
-  #print-area {
-    display: block !important;
-    width: 283mm;
-    font-family: Sarabun, sans-serif;
-    font-size: 8.5px;
-    color: #111;
-    line-height: 1.25;
-  }
-  .pa-header {
-    text-align: center;
-    border-bottom: 1.5px solid #1E3A5F;
-    padding-bottom: 2.5mm;
-    margin-bottom: 3mm;
-  }
-  .pa-title { font-size: 13px; font-weight: 700; color: #1E3A5F; }
-  .pa-subtitle { font-size: 10px; font-weight: 600; margin-top: 1mm; }
-  .pa-body { display: grid; grid-template-columns: 60% 38%; gap: 4mm; margin-top: 0; }
-  .pa-left {}
-  .pa-right {}
-  .pa-section { margin-bottom: 3mm; }
-  .pa-section-title {
-    font-size: 9px; font-weight: 700; color: #fff;
-    background: #1E3A5F;
-    padding: 1.5mm 2.5mm; margin-bottom: 1.5mm;
-  }
-  table { width: 100%; border-collapse: collapse; font-size: 8px; }
-  th {
-    background: #334155 !important; color: #fff !important;
-    padding: 1.5mm 2mm; text-align: right;
-    font-weight: 600; white-space: nowrap;
-  }
-  th:first-child { text-align: left; }
-  td { padding: 1.2mm 2mm; border-bottom: 0.2mm solid #e2e8f0; }
-  td:not(:first-child) { text-align: right; }
-  tr:nth-child(even) td { background: #f8fafc; }
-  .tfoot-row td {
-    background: #1E3A5F !important; color: #fff !important;
-    font-weight: 700; font-size: 8.5px;
-  }
-  .pa-pl { border: 0.3mm solid #e2e8f0; padding: 2.5mm; margin-bottom: 2mm; }
-  .pa-pl-title { font-size: 9px; font-weight: 700; color: #1E3A5F; border-bottom: 0.3mm solid #e2e8f0; padding-bottom: 1.5mm; margin-bottom: 1.5mm; }
-  .pa-pl-row { display: flex; justify-content: space-between; padding: 0.8mm 0; font-size: 8px; }
-  .pa-pl-section-label { font-size: 7px; color: #64748b; text-transform: uppercase; letter-spacing: 0.3mm; padding: 1mm 0 0.5mm; }
-  .pa-pl-divider { border-top: 0.2mm dashed #e2e8f0; margin: 1mm 0; }
-  .pa-pl-total { display: flex; justify-content: space-between; padding: 1.5mm 0 0; border-top: 0.8mm solid #1E3A5F; font-weight: 700; font-size: 12px; margin-top: 1mm; }
-  .pa-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5mm; margin-top: 2mm; }
-  .pa-stat { background: #f8fafc; border: 0.3mm solid #e2e8f0; padding: 1.5mm 2mm; }
-  .pa-stat-label { font-size: 7.5px; color: #64748b; }
-  .pa-stat-value { font-size: 9.5px; font-weight: 700; color: #1e293b; }
-  .pa-footer { display: flex; justify-content: space-between; margin-top: 3mm; padding-top: 1.5mm; border-top: 0.3mm solid #cbd5e1; font-size: 7px; color: #94a3b8; }
-  .c-green { color: #059669 !important; }
-  .c-red { color: #dc2626 !important; }
-  .c-orange { color: #ea580c !important; }
-  .c-blue { color: #2563eb !important; }
-  .c-purple { color: #7c3aed !important; }
-  .c-teal { color: #0d9488 !important; }
-}`}} />
+@media screen { #print-area { display: none; } }
+#print-area {
+  font-family: Sarabun, sans-serif;
+  font-size: 8.5px;
+  color: #111;
+  line-height: 1.25;
+  width: 277mm;
+  padding: 6mm 8mm;
+  background: #fff;
+  box-sizing: border-box;
+}
+#print-area .pa-header {
+  text-align: center;
+  border-bottom: 1.5px solid #1E3A5F;
+  padding-bottom: 2.5mm;
+  margin-bottom: 3mm;
+}
+#print-area .pa-title { font-size: 13px; font-weight: 700; color: #1E3A5F; }
+#print-area .pa-subtitle { font-size: 10px; font-weight: 600; margin-top: 1mm; }
+#print-area .pa-body {
+  display: grid;
+  grid-template-columns: 60% 38%;
+  gap: 4mm;
+}
+#print-area .pa-section-title {
+  font-size: 9px; font-weight: 700; color: #fff;
+  background: #1E3A5F;
+  padding: 1.5mm 2.5mm; margin-bottom: 1.5mm;
+}
+#print-area table { width: 100%; border-collapse: collapse; font-size: 8px; }
+#print-area th {
+  background: #334155; color: #fff;
+  padding: 1.5mm 2mm; text-align: right;
+  font-weight: 600; white-space: nowrap;
+}
+#print-area th:first-child { text-align: left; }
+#print-area td { padding: 1.2mm 2mm; border-bottom: 0.2mm solid #e2e8f0; }
+#print-area td:not(:first-child) { text-align: right; }
+#print-area tr:nth-child(even) td { background: #f8fafc; }
+#print-area .tfoot-row td {
+  background: #1E3A5F; color: #fff;
+  font-weight: 700; font-size: 8.5px;
+}
+#print-area .pa-pl { border: 0.3mm solid #e2e8f0; padding: 2mm; margin-bottom: 2mm; }
+#print-area .pa-pl-row { display: flex; justify-content: space-between; padding: 0.8mm 0; font-size: 8px; }
+#print-area .pa-pl-total { display: flex; justify-content: space-between; padding: 1.5mm 0 0; border-top: 0.8mm solid #1E3A5F; font-weight: 700; font-size: 12px; margin-top: 1mm; }
+#print-area .pa-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5mm; margin-top: 2mm; }
+#print-area .pa-stat { background: #f8fafc; border: 0.3mm solid #e2e8f0; padding: 1.5mm 2mm; }
+#print-area .pa-stat-label { font-size: 7.5px; color: #64748b; }
+#print-area .pa-stat-value { font-size: 9.5px; font-weight: 700; color: #1e293b; }
+#print-area .pa-footer { display: flex; justify-content: space-between; margin-top: 3mm; padding-top: 1.5mm; border-top: 0.3mm solid #cbd5e1; font-size: 7px; color: #94a3b8; }
+#print-area .c-green { color: #059669; }
+#print-area .c-red { color: #dc2626; }
+#print-area .c-orange { color: #ea580c; }
+#print-area .c-blue { color: #2563eb; }
+#print-area .c-purple { color: #7c3aed; }
+#print-area .c-teal { color: #0d9488; }
+`}} />
 
       {/* ══════════════════════════════════════════════════════
           PRINT AREA — hidden on screen, shown on print
@@ -458,8 +477,8 @@ export default function ReportsPage() {
             <RefreshCw className="w-4 h-4" />รีโหลด
           </button>
           {activeTab === 'summary' && report && (
-            <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 text-sm bg-[#1E3A5F] text-white rounded-lg hover:bg-[#163050]">
-              <Printer className="w-4 h-4" />พิมพ์ / PDF
+            <button onClick={exportPDF} className="flex items-center gap-2 px-4 py-2 text-sm bg-[#1E3A5F] text-white rounded-lg hover:bg-[#163050]">
+              <Printer className="w-4 h-4" />โหลด PDF
             </button>
           )}
         </div>
@@ -940,4 +959,4 @@ function StatBox({ label, value }: { label: string; value: string }) {
       <div className="font-bold text-slate-700 mt-0.5">{value}</div>
     </div>
   );
-}
+}'@media screen { #print-area { display: none; } }'
