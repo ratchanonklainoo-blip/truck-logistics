@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  BarChart3, Truck, Fuel, DollarSign, TrendingUp, TrendingDown,
-  Plus, Edit2, Trash2, X, Check, RefreshCw, ChevronLeft, ChevronRight,
-  FileText, Activity, Printer,
+  ChevronLeft, ChevronRight, RefreshCw, Printer, Plus,
+  Edit2, Trash2, Check, X, FileText, BarChart3,
 } from 'lucide-react';
 import { formatCurrency, formatNumber, adToBE } from '@/lib/utils';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface DriverSummary {
   driver_id: string;
@@ -65,18 +66,17 @@ interface MonthlyReport {
   totals: MonthlyTotals;
 }
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const THAI_MONTHS = [
   'มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
   'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม',
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {
-  insurance: 'ประกันภัย',
-  installment: 'ค่างวด',
-  maintenance: 'ค่าบำรุงรักษา',
-  tax: 'ภาษีรถ',
-  annual: 'จ่ายรายปี',
-  other: 'อื่นๆ',
+  insurance: 'ประกันภัย', installment: 'ค่างวด',
+  maintenance: 'ค่าบำรุงรักษา', tax: 'ภาษีรถ',
+  annual: 'จ่ายรายปี', other: 'อื่นๆ',
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -109,12 +109,13 @@ interface FEFormData {
   amount: string; total_installments: string; paid_installments: string;
   start_date: string; due_day: string; is_active: boolean; notes: string;
 }
-
 const EMPTY_FE: FEFormData = {
   name: '', category: 'insurance', truck_license_plate: '', amount: '',
   total_installments: '', paid_installments: '0', start_date: '',
   due_day: '', is_active: true, notes: '',
 };
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState<'summary' | 'fixed'>('summary');
@@ -137,9 +138,8 @@ export default function ReportsPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       setReport(json.data);
-    } catch (e: any) {
-      setError(e.message || 'โหลดรายงานไม่สำเร็จ');
-    } finally { setLoading(false); }
+    } catch (e: any) { setError(e.message || 'โหลดรายงานไม่สำเร็จ'); }
+    finally { setLoading(false); }
   }, [monthYear]);
 
   useEffect(() => { loadReport(); }, [loadReport]);
@@ -162,7 +162,6 @@ export default function ReportsPage() {
   };
 
   const openCreate = () => { setEditingFE(null); setFeForm(EMPTY_FE); setFeError(''); setShowFEModal(true); };
-
   const openEdit = (fe: FixedExpense) => {
     setEditingFE(fe);
     setFeForm({
@@ -171,7 +170,8 @@ export default function ReportsPage() {
       amount: String(fe.amount),
       total_installments: fe.total_installments !== null ? String(fe.total_installments) : '',
       paid_installments: String(fe.paid_installments),
-      start_date: fe.start_date || '', due_day: fe.due_day !== null ? String(fe.due_day) : '',
+      start_date: fe.start_date || '',
+      due_day: fe.due_day !== null ? String(fe.due_day) : '',
       is_active: fe.is_active, notes: fe.notes || '',
     });
     setFeError(''); setShowFEModal(true);
@@ -219,26 +219,36 @@ export default function ReportsPage() {
     loadFixed(); loadReport();
   };
 
+  // Per-truck fixed expense lookup
+  const getTruckFixed = (plate: string) =>
+    (report?.fixed_expenses || []).filter(fe => fe.is_active && fe.truck_license_plate === plate);
+
+  const totalAllFixed = (report?.fixed_expenses || [])
+    .filter(fe => fe.is_active)
+    .reduce((s, fe) => s + fe.amount, 0);
+
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-6 space-y-5 print:p-0 print:space-y-4">
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between print:hidden">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">รายงานรายเดือน</h1>
-          <p className="text-sm text-slate-500 mt-0.5">สรุปค่าใช้จ่ายและกำไรต่อรถแต่ละคัน</p>
+          <p className="text-sm text-slate-500 mt-0.5">สรุปรายได้ ค่าใช้จ่าย และกำไรสุทธิ</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={loadReport} className="flex items-center gap-2 px-3 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">
             <RefreshCw className="w-4 h-4" />รีโหลด
           </button>
           {activeTab === 'summary' && report && (
-            <button onClick={() => window.print()} className="flex items-center gap-2 px-3 py-2 text-sm bg-slate-700 text-white rounded-lg hover:bg-slate-800">
+            <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 text-sm bg-[#1E3A5F] text-white rounded-lg hover:bg-[#163050]">
               <Printer className="w-4 h-4" />พิมพ์ / PDF
             </button>
           )}
         </div>
       </div>
 
-      <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
+      {/* ── Tabs ── */}
+      <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit print:hidden">
         {[{ key: 'summary', label: 'สรุปรายเดือน', icon: BarChart3 }, { key: 'fixed', label: 'ค่าใช้จ่ายประจำ', icon: FileText }].map(({ key, label, icon: Icon }) => (
           <button key={key} onClick={() => setActiveTab(key as any)}
             className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
@@ -247,52 +257,247 @@ export default function ReportsPage() {
         ))}
       </div>
 
+      {/* ══════════════════════════════════════════════════════
+          TAB: Monthly Summary
+      ══════════════════════════════════════════════════════ */}
       {activeTab === 'summary' && (
         <div className="space-y-6">
-          <div className="flex items-center gap-3">
+          {/* Month nav */}
+          <div className="flex items-center gap-3 print:hidden">
             <button onClick={() => shiftMonth(-1)} className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50"><ChevronLeft className="w-4 h-4" /></button>
-            <div className="px-6 py-2 bg-white border border-slate-200 rounded-lg font-semibold text-slate-700 min-w-[180px] text-center">{displayMonthYear(monthYear)}</div>
+            <div className="px-8 py-2 bg-white border border-slate-200 rounded-lg font-semibold text-slate-700 min-w-[200px] text-center text-lg">
+              {displayMonthYear(monthYear)}
+            </div>
             <button onClick={() => shiftMonth(1)} className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50"><ChevronRight className="w-4 h-4" /></button>
           </div>
 
-          {loading && <div className="text-center py-16 text-slate-400">กำลังโหลด...</div>}
-          {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-red-700 text-sm">{error}</div>}
+          {loading && <div className="text-center py-20 text-slate-400">กำลังโหลด...</div>}
+          {error && <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 text-red-700">{error}</div>}
 
           {!loading && report && (
-            <>
-              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-                <SummaryCard label="รายได้รวม" value={formatCurrency(report.totals.total_revenue)} icon={<DollarSign className="w-5 h-5" />} color="text-green-600" bg="bg-green-50" />
-                <SummaryCard label="ค่าน้ำมันรวม" value={formatCurrency(report.totals.total_fuel_cost)} icon={<Fuel className="w-5 h-5" />} color="text-orange-600" bg="bg-orange-50" />
-                <SummaryCard label="เฉลี่ยน้ำมัน/ลิตร" value={`฿${formatNumber(report.totals.avg_fuel_price_per_litre, 2)}`} icon={<Fuel className="w-5 h-5" />} color="text-amber-600" bg="bg-amber-50" />
-                <SummaryCard label="ค่าคนขับรวม" value={formatCurrency(report.totals.total_driver_cost)} icon={<Truck className="w-5 h-5" />} color="text-blue-600" bg="bg-blue-50" />
-                <SummaryCard label="ค่าใช้จ่ายอื่น" value={formatCurrency(report.totals.total_other_cost)} icon={<Activity className="w-5 h-5" />} color="text-slate-600" bg="bg-slate-100" />
-                <SummaryCard label="กำไรสุทธิ" value={formatCurrency(report.totals.net_after_fixed)}
-                  icon={report.totals.net_after_fixed >= 0 ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
-                  color={report.totals.net_after_fixed >= 0 ? 'text-emerald-600' : 'text-red-600'}
-                  bg={report.totals.net_after_fixed >= 0 ? 'bg-emerald-50' : 'bg-red-50'} />
+            <div className="space-y-6">
+
+              {/* ── Print header (hidden on screen) ── */}
+              <div className="hidden print:block text-center border-b-2 border-[#1E3A5F] pb-3 mb-4">
+                <div className="text-xl font-bold text-[#1E3A5F]">หจก.ณสิริทรัพย์ การเกษตร</div>
+                <div className="text-base font-semibold mt-1">รายงานสรุปประจำเดือน {displayMonthYear(monthYear)}</div>
               </div>
 
-              {report.totals.total_fixed_expenses > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800 flex items-center gap-2">
-                  <Activity className="w-4 h-4 flex-shrink-0" />
-                  ค่าใช้จ่ายประจำ (บริษัท) {formatCurrency(report.totals.total_fixed_expenses)} ถูกหักออกจากกำไรรวมแล้ว
+              {/* ── Main CEO Table ── */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                  <span className="font-semibold text-slate-700 text-sm">สรุปผลการดำเนินงานแต่ละคัน</span>
+                  <span className="text-xs text-slate-400">{displayMonthYear(monthYear)}</span>
                 </div>
-              )}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-[#1E3A5F] text-white">
+                        <th className="text-left px-4 py-3 font-semibold whitespace-nowrap">คนขับ / รถ</th>
+                        <th className="text-center px-3 py-3 font-semibold whitespace-nowrap">เที่ยว</th>
+                        <th className="text-right px-4 py-3 font-semibold whitespace-nowrap">รายได้</th>
+                        <th className="text-right px-4 py-3 font-semibold whitespace-nowrap">ค่าน้ำมัน</th>
+                        <th className="text-right px-4 py-3 font-semibold whitespace-nowrap">ค่ารอบ+เงินเดือน</th>
+                        <th className="text-right px-4 py-3 font-semibold whitespace-nowrap">ค่าใช้จ่ายอื่น</th>
+                        <th className="text-right px-4 py-3 font-semibold whitespace-nowrap">ค่าใช้จ่ายประจำ</th>
+                        <th className="text-right px-4 py-3 font-semibold whitespace-nowrap">กำไรสุทธิ</th>
+                        <th className="text-right px-4 py-3 font-semibold whitespace-nowrap">สิ้นเปลือง</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {report.driver_summaries.map((ds, i) => {
+                        const truckFixed = getTruckFixed(ds.truck_license_plate);
+                        const truckFixedAmt = truckFixed.reduce((s, f) => s + f.amount, 0);
+                        const net = ds.net_profit - truckFixedAmt;
+                        const margin = ds.total_revenue > 0 ? (net / ds.total_revenue * 100) : 0;
+                        return (
+                          <tr key={ds.driver_id} className={`${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} hover:bg-blue-50/30 transition-colors`}>
+                            <td className="px-4 py-3">
+                              <div className="font-semibold text-slate-800">{ds.driver_nickname || ds.driver_name}</div>
+                              {ds.truck_license_plate && (
+                                <div className="text-xs text-slate-400 mt-0.5">{ds.truck_license_plate}</div>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 text-center text-slate-600 font-medium">{ds.trip_count}</td>
+                            <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatCurrency(ds.total_revenue)}</td>
+                            <td className="px-4 py-3 text-right text-orange-700">
+                              <div>{formatCurrency(ds.total_fuel_cost)}</div>
+                              {ds.avg_fuel_price_per_litre > 0 && (
+                                <div className="text-[11px] text-slate-400">฿{formatNumber(ds.avg_fuel_price_per_litre, 1)}/ล.</div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right text-blue-700">
+                              <div>{formatCurrency(ds.gross_driver_cost)}</div>
+                              <div className="text-[11px] text-slate-400">รอบ {formatCurrency(ds.total_commission)}</div>
+                            </td>
+                            <td className="px-4 py-3 text-right text-slate-600">{formatCurrency(ds.total_other_cost)}</td>
+                            <td className="px-4 py-3 text-right text-purple-700">
+                              {truckFixedAmt > 0 ? (
+                                <div>
+                                  <div>{formatCurrency(truckFixedAmt)}</div>
+                                  <div className="text-[11px] text-slate-400">{truckFixed.length} รายการ</div>
+                                </div>
+                              ) : <span className="text-slate-300">-</span>}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className={`font-bold text-base ${net >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                {formatCurrency(net)}
+                              </div>
+                              <div className={`text-[11px] font-medium ${margin >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                                {margin.toFixed(1)}%
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right text-slate-500 text-xs">
+                              <div>{formatNumber(ds.fuel_efficiency, 1)} กม./ล.</div>
+                              <div className="text-slate-400">{formatNumber(ds.total_distance)} กม.</div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    {/* Subtotal row */}
+                    <tfoot>
+                      <tr className="bg-slate-100 border-t-2 border-slate-300 font-semibold text-slate-700">
+                        <td className="px-4 py-3">รวมทุกคัน</td>
+                        <td className="px-3 py-3 text-center">{report.totals.trip_count}</td>
+                        <td className="px-4 py-3 text-right font-bold">{formatCurrency(report.totals.total_revenue)}</td>
+                        <td className="px-4 py-3 text-right text-orange-700 font-bold">{formatCurrency(report.totals.total_fuel_cost)}</td>
+                        <td className="px-4 py-3 text-right text-blue-700 font-bold">{formatCurrency(report.totals.total_driver_cost)}</td>
+                        <td className="px-4 py-3 text-right">{formatCurrency(report.totals.total_other_cost)}</td>
+                        <td className="px-4 py-3 text-right text-purple-700">
+                          {formatCurrency(report.driver_summaries.reduce((s, ds) => {
+                            const tf = getTruckFixed(ds.truck_license_plate);
+                            return s + tf.reduce((a, f) => a + f.amount, 0);
+                          }, 0))}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className={`font-bold text-base ${report.totals.net_profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {formatCurrency(report.totals.net_profit)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-xs text-slate-500">
+                          {report.totals.avg_fuel_price_per_litre > 0 && `฿${formatNumber(report.totals.avg_fuel_price_per_litre, 1)}/ล.`}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
 
-              {report.driver_summaries.length === 0 ? (
-                <div className="text-center py-12 text-slate-400">ไม่มีข้อมูลเที่ยววิ่งในเดือนนี้</div>
-              ) : (
-                <div className="space-y-4">
-                  {report.driver_summaries.map(ds => (
-                    <DriverSummaryCard key={ds.driver_id} summary={ds} fixedExpenses={report.fixed_expenses} />
-                  ))}
+              {/* ── Fixed expenses & Grand total side by side ── */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                {/* Fixed expenses table */}
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                  <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
+                    <span className="font-semibold text-slate-700 text-sm">ค่าใช้จ่ายประจำเดือน</span>
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-700 text-white text-xs">
+                        <th className="text-left px-4 py-2.5 font-medium">รายการ</th>
+                        <th className="text-left px-3 py-2.5 font-medium">รถ</th>
+                        <th className="text-right px-4 py-2.5 font-medium">จำนวน</th>
+                        <th className="text-center px-3 py-2.5 font-medium">งวด</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(report.fixed_expenses.filter(fe => fe.is_active)).length === 0 ? (
+                        <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-400">ไม่มีรายการ</td></tr>
+                      ) : (
+                        report.fixed_expenses.filter(fe => fe.is_active).map((fe, i) => {
+                          const isInst = fe.total_installments !== null;
+                          const done = isInst && fe.remaining_installments === 0;
+                          return (
+                            <tr key={fe.id} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                              <td className="px-4 py-2.5">
+                                <div className="font-medium text-slate-800">{fe.name}</div>
+                                <span className={`inline-flex mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${CATEGORY_COLORS[fe.category] || 'bg-gray-100 text-gray-700'}`}>
+                                  {CATEGORY_LABELS[fe.category] || fe.category}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2.5 text-slate-500 text-xs">{fe.truck_license_plate || 'บริษัท'}</td>
+                              <td className="px-4 py-2.5 text-right font-semibold text-slate-800">{formatCurrency(fe.amount)}</td>
+                              <td className="px-3 py-2.5 text-center text-xs">
+                                {isInst ? (
+                                  <div>
+                                    <div className={`font-medium ${done ? 'text-green-600' : 'text-slate-700'}`}>
+                                      {done ? 'ครบแล้ว' : `เหลือ ${fe.remaining_installments} งวด`}
+                                    </div>
+                                    <div className="text-slate-400">{fe.paid_installments}/{fe.total_installments}</div>
+                                  </div>
+                                ) : <span className="text-slate-400">ต่อเนื่อง</span>}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-purple-50 border-t-2 border-purple-200">
+                        <td colSpan={2} className="px-4 py-3 font-semibold text-purple-800">รวมค่าใช้จ่ายประจำ</td>
+                        <td className="px-4 py-3 text-right font-bold text-purple-800">{formatCurrency(totalAllFixed)}</td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
                 </div>
-              )}
-            </>
+
+                {/* Grand total summary box */}
+                <div className="space-y-4">
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
+                      <span className="font-semibold text-slate-700 text-sm">สรุปผลประกอบการ</span>
+                    </div>
+                    <div className="p-5 space-y-3">
+                      <SummaryRow label="รายได้รวมทั้งหมด" value={formatCurrency(report.totals.total_revenue)} valueClass="text-green-600 font-bold text-lg" />
+                      <div className="border-t border-dashed border-slate-200 pt-3 space-y-2">
+                        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide">หักค่าใช้จ่าย</div>
+                        <SummaryRow label="ค่าน้ำมัน" value={`- ${formatCurrency(report.totals.total_fuel_cost)}`} valueClass="text-orange-600" />
+                        <SummaryRow label="ค่าคนขับรวม (รอบ+เงินเดือน)" value={`- ${formatCurrency(report.totals.total_driver_cost)}`} valueClass="text-blue-600" />
+                        <SummaryRow label="ค่าใช้จ่ายอื่นๆ" value={`- ${formatCurrency(report.totals.total_other_cost)}`} valueClass="text-slate-600" />
+                        <SummaryRow label="ค่าใช้จ่ายประจำ" value={`- ${formatCurrency(totalAllFixed)}`} valueClass="text-purple-600" />
+                      </div>
+                      <div className="border-t-2 border-slate-300 pt-3">
+                        <div className="flex justify-between items-center">
+                          <span className="font-bold text-slate-800 text-base">กำไรสุทธิ</span>
+                          <span className={`font-bold text-2xl ${report.totals.net_after_fixed >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {formatCurrency(report.totals.net_after_fixed)}
+                          </span>
+                        </div>
+                        {report.totals.total_revenue > 0 && (
+                          <div className="text-right mt-1">
+                            <span className={`text-sm font-medium ${report.totals.net_after_fixed >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                              Margin {(report.totals.net_after_fixed / report.totals.total_revenue * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quick stats */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <StatBox label="เฉลี่ยน้ำมัน/ลิตร" value={`฿${formatNumber(report.totals.avg_fuel_price_per_litre, 2)}`} />
+                    <StatBox label="รวมระยะทาง" value={`${formatNumber(report.totals.total_distance)} กม.`} />
+                    <StatBox label="น้ำมันทั้งหมด" value={`${formatNumber(report.totals.total_fuel_litres, 0)} ลิตร`} />
+                    <StatBox label="จำนวนเที่ยว" value={`${report.totals.trip_count} เที่ยว`} />
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          {!loading && !report && !error && (
+            <div className="text-center py-20 text-slate-400">ไม่มีข้อมูล</div>
           )}
         </div>
       )}
 
+      {/* ══════════════════════════════════════════════════════
+          TAB: Fixed Expenses Management
+      ══════════════════════════════════════════════════════ */}
       {activeTab === 'fixed' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -301,11 +506,13 @@ export default function ReportsPage() {
               <Plus className="w-4 h-4" />เพิ่มรายการ
             </button>
           </div>
+
           {feLoading && <div className="text-center py-12 text-slate-400">กำลังโหลด...</div>}
+
           {!feLoading && (
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
               {fixedList.length === 0 ? (
-                <div className="text-center py-12 text-slate-400">ยังไม่มีรายการค่าใช้จ่ายประจำ</div>
+                <div className="text-center py-16 text-slate-400">ยังไม่มีรายการค่าใช้จ่ายประจำ</div>
               ) : (
                 <table className="w-full text-sm">
                   <thead>
@@ -314,18 +521,18 @@ export default function ReportsPage() {
                       <th className="text-left px-4 py-3 font-semibold text-slate-600">หมวด</th>
                       <th className="text-left px-4 py-3 font-semibold text-slate-600">รถ</th>
                       <th className="text-right px-4 py-3 font-semibold text-slate-600">จำนวน/เดือน</th>
-                      <th className="text-center px-4 py-3 font-semibold text-slate-600">งวด</th>
-                      <th className="text-center px-4 py-3 font-semibold text-slate-600">สถานะ</th>
-                      <th className="px-4 py-3"></th>
+                      <th className="text-center px-4 py-3 font-semibold text-slate-600">สถานะงวด</th>
+                      <th className="text-center px-4 py-3 font-semibold text-slate-600">ใช้งาน</th>
+                      <th className="px-4 py-3 w-28"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {fixedList.map(fe => {
+                    {fixedList.map((fe, i) => {
                       const isInst = fe.total_installments !== null;
                       const remaining = fe.remaining_installments;
                       const done = isInst && remaining === 0;
                       return (
-                        <tr key={fe.id} className={`hover:bg-slate-50 ${!fe.is_active ? 'opacity-50' : ''}`}>
+                        <tr key={fe.id} className={`hover:bg-slate-50 ${!fe.is_active ? 'opacity-50' : ''} ${i % 2 === 0 ? '' : 'bg-slate-50/30'}`}>
                           <td className="px-4 py-3">
                             <div className="font-medium text-slate-800">{fe.name}</div>
                             {fe.notes && <div className="text-xs text-slate-400 mt-0.5">{fe.notes}</div>}
@@ -335,19 +542,19 @@ export default function ReportsPage() {
                               {CATEGORY_LABELS[fe.category] || fe.category}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-slate-600">{fe.truck_license_plate || <span className="text-slate-400 text-xs">ทุกคัน</span>}</td>
-                          <td className="px-4 py-3 text-right font-mono font-semibold text-slate-800">{formatCurrency(fe.amount)}</td>
+                          <td className="px-4 py-3 text-slate-600 text-sm">{fe.truck_license_plate || <span className="text-slate-400 italic text-xs">ทุกคัน</span>}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatCurrency(fe.amount)}</td>
                           <td className="px-4 py-3 text-center">
                             {isInst ? (
-                              <div className="flex flex-col items-center gap-0.5">
-                                <div className={`text-xs font-semibold ${done ? 'text-green-600' : remaining === 1 ? 'text-orange-600' : 'text-slate-700'}`}>
-                                  {done ? 'ชำระครบแล้ว' : `เหลือ ${remaining} งวด`}
-                                </div>
-                                <div className="text-[11px] text-slate-400">{fe.paid_installments}/{fe.total_installments} งวด</div>
-                                <div className="w-20 h-1.5 bg-slate-200 rounded-full overflow-hidden mt-0.5">
+                              <div className="flex flex-col items-center gap-1">
+                                <span className={`text-xs font-semibold ${done ? 'text-green-600' : remaining === 1 ? 'text-orange-500' : 'text-slate-700'}`}>
+                                  {done ? 'ชำระครบ' : `เหลือ ${remaining} งวด`}
+                                </span>
+                                <div className="w-24 h-1.5 bg-slate-200 rounded-full overflow-hidden">
                                   <div className={`h-full rounded-full ${done ? 'bg-green-500' : 'bg-blue-500'}`}
                                     style={{ width: `${Math.min(100, (fe.paid_installments / (fe.total_installments || 1)) * 100)}%` }} />
                                 </div>
+                                <span className="text-[11px] text-slate-400">{fe.paid_installments}/{fe.total_installments} งวด</span>
                               </div>
                             ) : <span className="text-slate-400 text-xs">ต่อเนื่อง</span>}
                           </td>
@@ -372,9 +579,9 @@ export default function ReportsPage() {
                     })}
                   </tbody>
                   <tfoot>
-                    <tr className="bg-slate-50 border-t border-slate-200">
-                      <td colSpan={3} className="px-4 py-3 text-sm font-semibold text-slate-600">รวมค่าใช้จ่ายประจำ (รายการที่ใช้งานอยู่)</td>
-                      <td className="px-4 py-3 text-right font-bold text-slate-800">
+                    <tr className="bg-purple-50 border-t-2 border-purple-200">
+                      <td colSpan={3} className="px-4 py-3 font-semibold text-purple-800">รวมค่าใช้จ่ายประจำ (รายการที่ใช้งานอยู่)</td>
+                      <td className="px-4 py-3 text-right font-bold text-purple-800 text-base">
                         {formatCurrency(fixedList.filter(f => f.is_active).reduce((s, f) => s + f.amount, 0))}
                       </td>
                       <td colSpan={3} />
@@ -387,10 +594,11 @@ export default function ReportsPage() {
         </div>
       )}
 
+      {/* ── FE Modal ── */}
       {showFEModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 sticky top-0 bg-white">
               <h2 className="text-base font-semibold text-slate-800">{editingFE ? 'แก้ไขรายการ' : 'เพิ่มค่าใช้จ่ายประจำ'}</h2>
               <button onClick={() => setShowFEModal(false)} className="p-1 rounded hover:bg-slate-100"><X className="w-4 h-4" /></button>
             </div>
@@ -424,8 +632,7 @@ export default function ReportsPage() {
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">วันที่ครบกำหนดจ่าย</label>
                   <input type="number" min="1" max="31" value={feForm.due_day} onChange={e => setFeForm(p => ({ ...p, due_day: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="เช่น 5 (วันที่ 5)" />
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="เช่น 5" />
                 </div>
                 <div className="col-span-2 border-t border-slate-100 pt-3">
                   <p className="text-xs font-semibold text-slate-500 mb-3">ข้อมูลผ่อนชำระ (ถ้าเป็นค่างวด)</p>
@@ -450,17 +657,15 @@ export default function ReportsPage() {
                 <div className="col-span-2">
                   <label className="block text-xs font-medium text-slate-600 mb-1">หมายเหตุ</label>
                   <input value={feForm.notes} onChange={e => setFeForm(p => ({ ...p, notes: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="หมายเหตุเพิ่มเติม" />
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="หมายเหตุเพิ่มเติม" />
                 </div>
                 <div className="col-span-2 flex items-center gap-2">
-                  <input type="checkbox" id="fe-active" checked={feForm.is_active} onChange={e => setFeForm(p => ({ ...p, is_active: e.target.checked }))}
-                    className="w-4 h-4 text-blue-600 rounded" />
+                  <input type="checkbox" id="fe-active" checked={feForm.is_active} onChange={e => setFeForm(p => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 text-blue-600 rounded" />
                   <label htmlFor="fe-active" className="text-sm text-slate-700">ใช้งานอยู่ (นับรวมในรายงาน)</label>
                 </div>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50 rounded-b-xl">
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50 sticky bottom-0">
               <button onClick={() => setShowFEModal(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">ยกเลิก</button>
               <button onClick={saveFE} disabled={feSaving} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
                 {feSaving ? 'กำลังบันทึก...' : editingFE ? 'บันทึกการแก้ไข' : 'เพิ่มรายการ'}
@@ -473,91 +678,22 @@ export default function ReportsPage() {
   );
 }
 
-function SummaryCard({ label, value, icon, color, bg }: { label: string; value: string; icon: React.ReactNode; color: string; bg: string }) {
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function SummaryRow({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4">
-      <div className="flex items-center gap-3">
-        <div className={`${bg} ${color} rounded-lg p-2`}>{icon}</div>
-        <div className="min-w-0">
-          <p className="text-xs text-slate-500 truncate">{label}</p>
-          <p className={`text-lg font-bold ${color}`}>{value}</p>
-        </div>
-      </div>
+    <div className="flex justify-between items-center">
+      <span className="text-slate-600 text-sm">{label}</span>
+      <span className={`font-semibold text-sm ${valueClass || 'text-slate-800'}`}>{value}</span>
     </div>
   );
 }
 
-function DriverSummaryCard({ summary: s, fixedExpenses }: { summary: DriverSummary; fixedExpenses: FixedExpense[] }) {
-  const [expanded, setExpanded] = useState(false);
-  const truckFixed = fixedExpenses.filter(fe => fe.is_active && fe.truck_license_plate === s.truck_license_plate);
-  const truckFixedTotal = truckFixed.reduce((sum, fe) => sum + fe.amount, 0);
-  const netAfterFixed = s.net_profit - truckFixedTotal;
-
+function StatBox({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <button onClick={() => setExpanded(p => !p)} className="w-full px-5 py-4 flex items-center gap-4 hover:bg-slate-50 text-left">
-        <div className="flex-shrink-0 w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-          <Truck className="w-5 h-5 text-blue-600" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-slate-800">
-            {s.driver_nickname || s.driver_name}
-            {s.truck_license_plate && <span className="ml-2 text-xs text-slate-400 font-normal">({s.truck_license_plate})</span>}
-          </div>
-          <div className="text-xs text-slate-500 mt-0.5">{s.trip_count} เที่ยว · {formatNumber(s.total_distance)} กม.</div>
-        </div>
-        <div className="hidden md:flex items-center gap-6 text-sm">
-          <div className="text-center"><div className="text-xs text-slate-400">รายได้</div><div className="font-semibold text-green-600">{formatCurrency(s.total_revenue)}</div></div>
-          <div className="text-center"><div className="text-xs text-slate-400">น้ำมัน</div><div className="font-semibold text-orange-600">{formatCurrency(s.total_fuel_cost)}</div></div>
-          <div className="text-center"><div className="text-xs text-slate-400">คนขับ</div><div className="font-semibold text-blue-600">{formatCurrency(s.gross_driver_cost)}</div></div>
-          <div className="text-center">
-            <div className="text-xs text-slate-400">กำไรสุทธิ</div>
-            <div className={`font-bold text-base ${netAfterFixed >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(netAfterFixed)}</div>
-          </div>
-        </div>
-        <div className="text-slate-300 ml-2">{expanded ? '▲' : '▼'}</div>
-      </button>
-
-      {expanded && (
-        <div className="border-t border-slate-100 px-5 py-4 bg-slate-50">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-4">
-            <DetailItem label="รายได้รวม" value={formatCurrency(s.total_revenue)} valueClass="text-green-700" />
-            <DetailItem label="ค่าน้ำมัน" value={formatCurrency(s.total_fuel_cost)} valueClass="text-orange-700" />
-            <DetailItem label="ค่าใช้จ่ายอื่น" value={formatCurrency(s.total_other_cost)} valueClass="text-slate-700" />
-            <DetailItem label="ค่ารอบ" value={formatCurrency(s.total_commission)} valueClass="text-purple-700" />
-            <DetailItem label="เงินเดือนพื้นฐาน" value={formatCurrency(s.base_salary)} valueClass="text-slate-700" />
-            <DetailItem label="รวมค่าคนขับ" value={formatCurrency(s.gross_driver_cost)} valueClass="text-blue-700" />
-            <DetailItem label="อัตราสิ้นเปลือง" value={`${formatNumber(s.fuel_efficiency, 2)} กม./ลิตร`} valueClass="text-teal-700" />
-            <DetailItem label="ราคาน้ำมัน/ลิตร" value={`฿${formatNumber(s.avg_fuel_price_per_litre, 2)}`} valueClass="text-amber-700" />
-            <DetailItem label="ระยะทางรวม" value={`${formatNumber(s.total_distance)} กม.`} valueClass="text-slate-700" />
-          </div>
-          <div className="bg-white rounded-lg border border-slate-200 p-3 text-sm space-y-1.5">
-            <div className="flex justify-between text-slate-600"><span>รายได้</span><span className="font-medium text-green-700">+{formatCurrency(s.total_revenue)}</span></div>
-            <div className="flex justify-between text-slate-600"><span>ค่าน้ำมัน</span><span className="font-medium text-red-600">-{formatCurrency(s.total_fuel_cost)}</span></div>
-            <div className="flex justify-between text-slate-600"><span>ค่าใช้จ่ายอื่น</span><span className="font-medium text-red-600">-{formatCurrency(s.total_other_cost)}</span></div>
-            <div className="flex justify-between text-slate-600"><span>ค่าคนขับรวม</span><span className="font-medium text-red-600">-{formatCurrency(s.gross_driver_cost)}</span></div>
-            {truckFixed.map(fe => (
-              <div key={fe.id} className="flex justify-between text-slate-600">
-                <span>{fe.name}</span>
-                <span className="font-medium text-red-600">-{formatCurrency(fe.amount)}</span>
-              </div>
-            ))}
-            <div className="border-t border-slate-200 pt-1.5 flex justify-between font-bold text-base">
-              <span>กำไรสุทธิ</span>
-              <span className={netAfterFixed >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(netAfterFixed)}</span>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DetailItem({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
-  return (
-    <div className="bg-white rounded-lg border border-slate-100 px-3 py-2">
+    <div className="bg-white rounded-xl border border-slate-200 px-4 py-3 shadow-sm">
       <div className="text-xs text-slate-400">{label}</div>
-      <div className={`font-semibold mt-0.5 ${valueClass || 'text-slate-700'}`}>{value}</div>
+      <div className="font-bold text-slate-700 mt-0.5">{value}</div>
     </div>
   );
 }
