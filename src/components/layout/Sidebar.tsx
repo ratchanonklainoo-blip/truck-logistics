@@ -8,7 +8,7 @@ import {
   Truck, LayoutDashboard, ClipboardList,
   Users, Fuel, MapPin, UserCheck,
   Bell, Settings, LogOut,
-  Wallet, ChevronRight, Ship, FileText,
+  Wallet, ChevronRight, Ship, FileText, BarChart3,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
@@ -30,13 +30,14 @@ const NAV_ITEMS = [
   { href: '/payroll',    label: 'เงินเดือนและค่ารอบ', icon: Wallet,          badge: null },
   { href: '/import',     label: 'ชิปปิ้ง',            icon: Ship,            badge: null },
   { href: '/documents',  label: 'เอกสาร',              icon: FileText,        badge: null },
+  { href: '/reports',    label: 'รายงานรายเดือน',     icon: BarChart3,        badge: null },
   { href: '/alerts',     label: 'แจ้งเตือน',           icon: Bell,            badge: 'alerts'   as keyof Badges },
   { href: '/settings',   label: 'ตั้งค่าระบบ',         icon: Settings,        badge: null },
 ] as const;
 
 const PHASE_AVAILABLE = new Set([
   '/dashboard', '/trips', '/jobs', '/customers', '/drivers', '/settings',
-  '/fuel', '/advances', '/payroll', '/alerts', '/import', '/documents',
+  '/fuel', '/advances', '/payroll', '/alerts', '/import', '/documents', '/reports',
 ]);
 
 interface SidebarProps { userEmail?: string; }
@@ -139,8 +140,7 @@ export default function Sidebar({ userEmail }: SidebarProps) {
           disabled={loggingOut}
           className="sidebar-link w-full text-left text-red-300 hover:bg-red-500/20 hover:text-red-200"
         >
-          <LogOut className="w-4 h-4" />
-          <span>{loggingOut ? 'กำลังออก...' : 'ออกจากระบบ'}</span>
+          <LogOut className="w-4 h-4" /><span>{loggingOut ? 'กำลังออก...' : 'ออกจากระบบ'}</span>
         </button>
       </div>
     </aside>
