@@ -146,8 +146,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
   );
 
+  // Deduct ALL active fixed expenses (both company-wide AND per-truck)
   const fixedTotal = enrichedFixed
-    .filter(fe => !fe.truck_license_plate)
     .reduce((s, fe) => s + fe.amount, 0);
 
   const avgFuelPrice = totals.total_fuel_litres > 0

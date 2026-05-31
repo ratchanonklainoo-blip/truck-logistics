@@ -387,15 +387,14 @@ export default function ReportsPage() {
                         <td className="px-4 py-3 text-right text-blue-700 font-bold">{formatCurrency(report.totals.total_driver_cost)}</td>
                         <td className="px-4 py-3 text-right">{formatCurrency(report.totals.total_other_cost)}</td>
                         <td className="px-4 py-3 text-right text-purple-700">
-                          {formatCurrency(report.driver_summaries.reduce((s, ds) => {
-                            const tf = getTruckFixed(ds.truck_license_plate);
-                            return s + tf.reduce((a, f) => a + f.amount, 0);
-                          }, 0))}
+                          <div className="font-bold">{formatCurrency(totalAllFixed)}</div>
+                          <div className="text-[11px] text-slate-400">ทุกรายการ</div>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <span className={`font-bold text-base ${report.totals.net_profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                            {formatCurrency(report.totals.net_profit)}
-                          </span>
+                          <div className={`font-bold text-base ${report.totals.net_after_fixed >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {formatCurrency(report.totals.net_after_fixed)}
+                          </div>
+                          <div className="text-[11px] text-slate-400">หลังหักทั้งหมด</div>
                         </td>
                         <td className="px-4 py-3 text-right text-xs text-slate-500">
                           {report.totals.avg_fuel_price_per_litre > 0 && `฿${formatNumber(report.totals.avg_fuel_price_per_litre, 1)}/ล.`}
@@ -714,6 +713,10 @@ function StatBox({ label, value }: { label: string; value: string }) {
     <div className="bg-white rounded-xl border border-slate-200 px-4 py-3 shadow-sm">
       <div className="text-xs text-slate-400">{label}</div>
       <div className="font-bold text-slate-700 mt-0.5">{value}</div>
+    </div>
+  );
+}
+te-700 mt-0.5">{value}</div>
     </div>
   );
 }
