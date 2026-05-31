@@ -82,9 +82,9 @@ export default function DriversPage() {
       license_plate: form.license_plate,
       bank_account: form.bank_account || null,
       social_security: Number(form.social_security) || 0,
-      base_salary: Number(form.base_salary) || 5000,
+      base_salary: form.base_salary === '' ? 0 : Number(form.base_salary),
       commission_rate: Number(form.commission_rate) || 0.10,
-      monthly_advance_limit: Number(form.monthly_advance_limit) || 5000,
+      monthly_advance_limit: form.monthly_advance_limit === '' ? 0 : Number(form.monthly_advance_limit),
       line_user_id: form.line_user_id || null,
       updated_at: new Date().toISOString(),
     };
@@ -326,10 +326,8 @@ export default function DriversPage() {
 
       {/* ── Form Modal ── */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-          onClick={() => setShowForm(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
-            onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white px-5 py-4 border-b border-slate-100 flex items-center justify-between z-10">
               <h2 className="text-lg font-bold text-slate-800">
                 {editing ? 'แก้ไขข้อมูลคนขับ' : 'เพิ่มคนขับใหม่'}
@@ -393,7 +391,8 @@ export default function DriversPage() {
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="form-label">เงินเดือน (บาท)</label>
-                    <input type="number" className="form-input" value={form.base_salary}
+                    <input type="number" min="0" className="form-input" value={form.base_salary}
+                      placeholder="0 = ทดลองงาน"
                       onChange={e => f('base_salary', e.target.value)} />
                   </div>
                   <div>

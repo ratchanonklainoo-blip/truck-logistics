@@ -47,16 +47,17 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     base_salary: number;
     social_security: number;
     trip_count: number;
-    total_revenue: number;       // sum of transport_price
+    total_revenue: number;
     total_fuel_cost: number;
     total_fuel_litres: number;
     total_distance: number;
     total_other_cost: number;
-    total_withdraw: number;      // cash withdrawn per trips
-    total_commission: number;    // trip_pay or transport_price * 0.10
-    gross_driver_cost: number;   // base_salary + total_commission
-    net_profit: number;          // revenue - fuel_cost - other_cost - gross_driver_cost
-    fuel_efficiency: number;     // km/L
+    total_withdraw: number;
+    total_commission: number;
+    gross_driver_cost: number;
+    net_profit: number;
+    fuel_efficiency: number;    // km/L
+    avg_fuel_price_per_litre: number; // baht/L = total_fuel_cost / total_fuel_litres
   };
 
   const summaryMap: Record<string, DriverSummary> = {};
@@ -84,6 +85,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         gross_driver_cost: 0,
         net_profit: 0,
         fuel_efficiency: 0,
+        avg_fuel_price_per_litre: 0,
       };
     }
     const s = summaryMap[did];
@@ -110,6 +112,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     ) / 100;
     s.fuel_efficiency = s.total_fuel_litres > 0
       ? Math.round((s.total_distance / s.total_fuel_litres) * 100) / 100
+      : 0;
+    s.avg_fuel_price_per_litre = s.total_fuel_litres > 0
+      ? Math.round((s.total_fuel_cost / s.total_fuel_litres) * 100) / 100
       : 0;
     return s;
   });
@@ -145,6 +150,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     .filter(fe => !fe.truck_license_plate)
     .reduce((s, fe) => s + fe.amount, 0);
 
+  const avgFuelPrice = totals.total_fuel_litres > 0
+    ? Math.round((totals.total_fuel_cost / totals.total_fuel_litres) * 100) / 100
+    : 0;
+
   return NextResponse.json({
     data: {
       month_year,
@@ -156,6 +165,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         ...totals,
         total_fixed_expenses: fixedTotal,
         net_after_fixed: Math.round((totals.net_profit - fixedTotal) * 100) / 100,
+        avg_fuel_price_per_litre: avgFuelPrice,
       },
     },
   });

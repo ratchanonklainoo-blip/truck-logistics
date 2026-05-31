@@ -28,6 +28,7 @@ interface DriverSummary {
   gross_driver_cost: number;
   net_profit: number;
   fuel_efficiency: number;
+  avg_fuel_price_per_litre: number;
 }
 
 interface FixedExpense {
@@ -56,6 +57,7 @@ interface MonthlyTotals {
   total_fuel_litres: number;
   total_fixed_expenses: number;
   net_after_fixed: number;
+  avg_fuel_price_per_litre: number;
 }
 
 interface MonthlyReport {
@@ -77,6 +79,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   installment: 'ค่างวด',
   maintenance: 'ค่าบำรุงรักษา',
   tax: 'ภาษีรถ',
+  annual: 'จ่ายรายปี',
   other: 'อื่นๆ',
 };
 
@@ -85,6 +88,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   installment: 'bg-purple-100 text-purple-700',
   maintenance: 'bg-yellow-100 text-yellow-700',
   tax: 'bg-red-100 text-red-700',
+  annual: 'bg-green-100 text-green-700',
   other: 'bg-gray-100 text-gray-700',
 };
 
@@ -325,10 +329,12 @@ export default function ReportsPage() {
 
           {!loading && report && (
             <>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
                 <SummaryCard label="รายได้รวม" value={formatCurrency(report.totals.total_revenue)} icon={<DollarSign className="w-5 h-5" />} color="text-green-600" bg="bg-green-50" />
                 <SummaryCard label="ค่าน้ำมันรวม" value={formatCurrency(report.totals.total_fuel_cost)} icon={<Fuel className="w-5 h-5" />} color="text-orange-600" bg="bg-orange-50" />
+                <SummaryCard label="เฉลี่ยน้ำมัน/ลิตร" value={`฿${formatNumber(report.totals.avg_fuel_price_per_litre, 2)}`} icon={<Fuel className="w-5 h-5" />} color="text-amber-600" bg="bg-amber-50" />
                 <SummaryCard label="ค่าคนขับรวม" value={formatCurrency(report.totals.total_driver_cost)} icon={<Truck className="w-5 h-5" />} color="text-blue-600" bg="bg-blue-50" />
+                <SummaryCard label="ค่าใช้จ่ายอื่น" value={formatCurrency(report.totals.total_other_cost)} icon={<Activity className="w-5 h-5" />} color="text-slate-600" bg="bg-slate-100" />
                 <SummaryCard label="กำไรสุทธิ" value={formatCurrency(report.totals.net_after_fixed)} icon={report.totals.net_after_fixed >= 0 ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />} color={report.totals.net_after_fixed >= 0 ? 'text-emerald-600' : 'text-red-600'} bg={report.totals.net_after_fixed >= 0 ? 'bg-emerald-50' : 'bg-red-50'} />
               </div>
 
@@ -746,6 +752,7 @@ function DriverSummaryCard({ summary: s, fixedExpenses }: { summary: DriverSumma
             <DetailItem label="เงินเดือนพื้นฐาน" value={formatCurrency(s.base_salary)} valueClass="text-slate-700" />
             <DetailItem label="รวมค่าคนขับ" value={formatCurrency(s.gross_driver_cost)} valueClass="text-blue-700" />
             <DetailItem label="อัตราสิ้นเปลือง" value={`${formatNumber(s.fuel_efficiency, 2)} กม./ลิตร`} valueClass="text-teal-700" />
+            <DetailItem label="ราคาน้ำมัน/ลิตร" value={`฿${formatNumber(s.avg_fuel_price_per_litre, 2)}`} valueClass="text-amber-700" />
             <DetailItem label="ระยะทางรวม" value={`${formatNumber(s.total_distance)} กม.`} valueClass="text-slate-700" />
           </div>
           <div className="bg-white rounded-lg border border-slate-200 p-3 text-sm space-y-1.5">

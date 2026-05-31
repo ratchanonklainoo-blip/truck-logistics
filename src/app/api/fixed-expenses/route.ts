@@ -24,7 +24,16 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ data });
+
+  // Compute remaining_installments client-side (not stored in DB)
+  const enriched = (data || []).map(fe => ({
+    ...fe,
+    remaining_installments: fe.total_installments !== null
+      ? Math.max(0, fe.total_installments - (fe.paid_installments || 0))
+      : null,
+  }));
+
+  return NextResponse.json({ data: enriched });
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
