@@ -67,7 +67,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const { data: trips } = await supabase
     .from('trips')
-    .select('transport_price, trip_pay, distance, fuel_litres')
+    .select('transport_price, trip_pay, distance, fuel_litres, withdraw')
     .eq('driver_id', driver_id)
     .gte('date', dateFrom)
     .lte('date', dateTo)
@@ -87,7 +87,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const totalCommission = tripList.reduce((s, t) => {
     return s + (t.trip_pay > 0 ? t.trip_pay : t.transport_price * 0.10);
   }, 0);
-  const totalAdvance = advanceList.reduce((s, a) => s + a.amount, 0);
+  // Use trips.withdraw (actual cash withdrawn per trip) as the deduction source
+  // advance_requests are tracked separately for approval flow
+  const totalWithdrawFromTrips = tripList.reduce((s, t) => s + (t.withdraw || 0), 0);
+  const totalAdvanceRequests = advanceList.reduce((s, a) => s + a.amount, 0);
+  // Prefer trips.withdraw if > 0, otherwise fall back to advance_requests
+  const totalAdvance = totalWithdrawFromTrips > 0 ? totalWithdrawFromTrips : totalAdvanceRequests;
   const totalDistance = tripList.reduce((s, t) => s + (t.distance || 0), 0);
   const tripCount = tripList.length;
 
@@ -96,7 +101,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const grossPay = baseSalary + totalCommission;
   const netPayRaw = grossPay - totalAdvance - socialSecurity;
-  const netPay = floorTen(netPayRaw);
+  // Do NOT floor net_pay — store exact calculated value
+  const netPay = Math.round(netPayRaw * 100) / 100;
 
   const { data, error } = await supabase
     .from('payrolls')

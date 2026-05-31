@@ -101,7 +101,8 @@ export function calcNetPay(
   withdraw: number,
   socialSecurity: number,
 ): number {
-  return floorToNearest10(tripPay + salary - withdraw - socialSecurity);
+  // Return exact value — no rounding on final net pay
+  return Math.round((tripPay + salary - withdraw - socialSecurity) * 100) / 100;
 }
 
 // ─── Distance ───────────────────────────────────────────────
