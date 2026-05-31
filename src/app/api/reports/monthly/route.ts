@@ -22,8 +22,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     .from('trips')
     .select(`
       driver_id, transport_price, trip_pay, fuel_cost, fuel_litres,
-      distance, other_cost, withdraw,
-      drivers!trips_driver_id_fkey(id, name, nickname, truck_license_plate, base_salary, social_security)
+      distance, other_cost, withdraw, license_plate,
+      drivers!trips_driver_id_fkey(id, name, nickname, base_salary, social_security)
     `)
     .gte('date', dateFrom)
     .lte('date', dateTo)
@@ -70,7 +70,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         driver_id: did,
         driver_name: dr.name,
         driver_nickname: dr.nickname,
-        truck_license_plate: dr.truck_license_plate || '',
+        truck_license_plate: (t as any).license_plate || '',
         base_salary: dr.base_salary || 0,
         social_security: dr.social_security || 0,
         trip_count: 0,
