@@ -782,3 +782,24 @@ function DetailItem({ label, value, valueClass }: { label: string; value: string
     </div>
   );
 }
+0">-{formatCurrency(fe.amount)}</span></div>
+            ))}
+            <div className="border-t border-slate-200 pt-1.5 flex justify-between font-bold text-base">
+              <span>กำไรสุทธิ</span>
+              <span className={netAfterFixed >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(netAfterFixed)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DetailItem({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
+  return (
+    <div className="bg-white rounded-lg border border-slate-100 px-3 py-2">
+      <div className="text-xs text-slate-400">{label}</div>
+      <div className={`font-semibold mt-0.5 ${valueClass || 'text-slate-700'}`}>{value}</div>
+    </div>
+  );
+}
