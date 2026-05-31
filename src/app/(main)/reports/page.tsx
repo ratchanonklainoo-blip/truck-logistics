@@ -229,6 +229,23 @@ export default function ReportsPage() {
 
   return (
     <div className="p-6 space-y-5 print:p-0 print:space-y-4">
+      {/* ── Global print CSS: hide sidebar, fit A4 ── */}
+      <style dangerouslySetInnerHTML={{ __html: [
+        '@media print {',
+        '  @page { size: A4 landscape; margin: 10mm; }',
+        '  aside, nav, [class*="sidebar"], [data-sidebar] { display: none !important; }',
+        '  body { margin: 0; font-family: Sarabun, sans-serif; font-size: 11px; color: #111; }',
+        '  main, #__next > div, .main-content { margin-left: 0 !important; padding-left: 0 !important; width: 100% !important; }',
+        '  .print\\:hidden { display: none !important; }',
+        '  .print\\:block { display: block !important; }',
+        '  table { border-collapse: collapse; font-size: 10px; }',
+        '  th, td { padding: 4px 6px !important; }',
+        '  .shadow-sm, .shadow { box-shadow: none !important; }',
+        '  .rounded-xl, .rounded-lg { border-radius: 4px !important; }',
+        '  .overflow-x-auto { overflow: visible !important; }',
+        '  .lg\\:grid-cols-2 { grid-template-columns: 1fr 1fr !important; }',
+        '}',
+      ].join('\n') }} />
       {/* ── Header ── */}
       <div className="flex items-center justify-between print:hidden">
         <div>
@@ -316,6 +333,11 @@ export default function ReportsPage() {
                               <div className="font-semibold text-slate-800">{ds.driver_nickname || ds.driver_name}</div>
                               {ds.truck_license_plate && (
                                 <div className="text-xs text-slate-400 mt-0.5">{ds.truck_license_plate}</div>
+                              )}
+                              {ds.fuel_efficiency > 0 && (
+                                <div className={`text-xs font-medium mt-1 ${ds.fuel_efficiency >= 3 ? 'text-teal-600' : 'text-orange-500'}`}>
+                                  {formatNumber(ds.fuel_efficiency, 1)} กม./ล.
+                                </div>
                               )}
                             </td>
                             <td className="px-3 py-3 text-center text-slate-600 font-medium">{ds.trip_count}</td>
@@ -677,8 +699,6 @@ export default function ReportsPage() {
     </div>
   );
 }
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function SummaryRow({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
   return (

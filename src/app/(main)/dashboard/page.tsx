@@ -362,6 +362,7 @@ export default function DashboardPage() {
                 <th className="px-4 py-3 text-right">เที่ยว</th>
                 <th className="px-4 py-3 text-right">รายรับ</th>
                 <th className="px-4 py-3 text-right">ค่าเที่ยว</th>
+                <th className="px-4 py-3 text-right">ค่าอื่นๆ</th>
                 <th className="px-4 py-3 text-right">น้ำมัน</th>
                 <th className="px-4 py-3 text-right">ระยะทาง</th>
                 <th className="px-5 py-3 text-right">สิ้นเปลือง</th>
@@ -374,6 +375,7 @@ export default function DashboardPage() {
                   <td className="px-4 py-3 text-right">{d.trips}</td>
                   <td className="px-4 py-3 text-right text-green-700 font-medium">{formatCurrency(d.revenue)}</td>
                   <td className="px-4 py-3 text-right text-blue-700 font-medium">{formatCurrency(d.trip_pay)}</td>
+                  <td className="px-4 py-3 text-right text-slate-500">{d.other_cost > 0 ? formatCurrency(d.other_cost) : <span className="text-slate-300">-</span>}</td>
                   <td className="px-4 py-3 text-right text-orange-600">{formatCurrency(d.fuel_cost)}</td>
                   <td className="px-4 py-3 text-right text-slate-600">{formatNumber(d.distance)} กม.</td>
                   <td className="px-5 py-3 text-right">
@@ -525,17 +527,18 @@ export default function DashboardPage() {
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={reportDriverData} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis type="number" tick={{ fontSize: 11, fontFamily: 'Sarabun' }} tickFormatter={v => `${(v/1000).toFixed(0)}K`} />
+                    <XAxis type="number" tick={{ fontSize: 11, fontFamily: "Sarabun" }} tickFormatter={(v: number) => formatCurrency(v)} />
                     <YAxis type="category" dataKey="name" tick={{ fontSize: 12, fontFamily: 'Sarabun' }} width={50} />
                     <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ fontFamily: 'Sarabun', fontSize: 13 }} />
                     <Legend wrapperStyle={{ fontFamily: 'Sarabun', fontSize: 13 }} />
                     <Bar dataKey="รายได้"   fill="#3B82F6" radius={[0,4,4,0]} />
-                    <Bar dataKey="ค่าน้ำมัน" fill="#F59E0B" radius={[0,4,4,0]} />
+                    <Bar dataKey="ค่าเที่ยว" fill="#10B981" radius={[0,4,4,0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
           </div>
+
         )
       )}
     </div>
