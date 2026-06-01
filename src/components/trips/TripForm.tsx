@@ -117,12 +117,29 @@ export default function TripForm({
     }
   }, [editingTrip, selectedDriverId, initialOdometer, reset]);
 
-  // Auto-calc trip_pay when transport_price changes
+  // ── No commission flag ──────────────────────────────────
+  const [noTripPay, setNoTripPay] = useState(false);
+
+  // When editing: auto-detect if commission was intentionally 0
+  useEffect(() => {
+    if (editingTrip) {
+      const wasZero = editingTrip.trip_pay === 0 && safeNumber(editingTrip.transport_price) > 0;
+      setNoTripPay(wasZero);
+    } else {
+      setNoTripPay(false);
+    }
+  }, [editingTrip]);
+
+  // Auto-calc trip_pay when transport_price changes (skip if no-commission mode)
   const transportPrice = watch('transport_price');
   useEffect(() => {
-    const pay = calcCommission(safeNumber(transportPrice), COMMISSION_RATE);
-    setValue('trip_pay', pay);
-  }, [transportPrice, setValue]);
+    if (noTripPay) {
+      setValue('trip_pay', 0);
+    } else {
+      const pay = calcCommission(safeNumber(transportPrice), COMMISSION_RATE);
+      setValue('trip_pay', pay);
+    }
+  }, [transportPrice, noTripPay, setValue]);
 
   // Auto-calc distance when odometer changes
   const odomStart = watch('odometer_start');
@@ -385,14 +402,44 @@ export default function TripForm({
         </div>
 
         {/* ค่าเที่ยว + เบิก */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="form-label">ค่าเที่ยว (บาท) <span className="text-blue-500 text-xs">auto 10%</span></label>
-            <input type="number" step="0.01" {...register('trip_pay')} className="form-input" />
-          </div>
-          <div>
-            <label className="form-label">เบิก/หัก (บาท)</label>
-            <input type="number" {...register('withdraw')} className="form-input" placeholder="0" />
+        <div className="space-y-2">
+          {/* No-commission toggle */}
+          <label className="flex items-center gap-2.5 cursor-pointer select-none w-fit">
+            <div
+              onClick={() => setNoTripPay(v => !v)}
+              className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                noTripPay
+                  ? 'bg-red-500 border-red-500'
+                  : 'bg-white border-slate-300 hover:border-slate-400'
+              }`}
+            >
+              {noTripPay && <Check className="w-3 h-3 text-white" />}
+            </div>
+            <span className="text-sm font-medium text-slate-700">
+              ไม่นับค่าเที่ยว
+              <span className="ml-1.5 text-xs font-normal text-slate-400">(ไม่คิดค่ารอบในสลิปเงินเดือน)</span>
+            </span>
+          </label>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="form-label">
+                ค่าเที่ยว (บาท)
+                {!noTripPay && <span className="text-blue-500 text-xs ml-1">auto 10%</span>}
+                {noTripPay  && <span className="text-red-500 text-xs ml-1">ไม่นับ</span>}
+              </label>
+              <input
+                type="number" step="0.01"
+                {...register('trip_pay')}
+                disabled={noTripPay}
+                className={`form-input ${noTripPay ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`}
+              />
+            </div>
+            <div>
+              <label className="form-label">เบิก/หัก (บาท)</label>
+              <input type="number" {...register('withdraw')} className="form-input" placeholder="0" />
+        
+            </div>
           </div>
         </div>
 
