@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import {
   ChevronLeft, ChevronRight, RefreshCw, Printer, Plus,
   Edit2, Trash2, Check, X, FileText, BarChart3,
@@ -132,6 +133,7 @@ export default function ReportsPage() {
   const [feForm, setFeForm] = useState<FEFormData>(EMPTY_FE);
   const [feSaving, setFeSaving] = useState(false);
   const [feError, setFeError] = useState('');
+  const [driverPlates, setDriverPlates] = useState<{ id: string; nickname: string; license_plate: string }[]>([]);
 
   const loadReport = useCallback(async () => {
     setLoading(true); setError('');
@@ -159,6 +161,23 @@ export default function ReportsPage() {
   }, []);
 
   useEffect(() => { loadFixed(); }, [loadFixed]);
+
+  // Load driver license plates for dropdown
+  const supabaseRef = useRef(createClient());
+  useEffect(() => {
+    supabaseRef.current
+      .from('drivers')
+      .select('id, name, nickname, license_plate')
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .then(({ data }) => {
+        setDriverPlates(
+          (data || [])
+            .filter(d => d.license_plate)
+            .map(d => ({ id: d.id, nickname: d.nickname || d.name, license_plate: d.license_plate }))
+        );
+      });
+  }, []);
 
   const shiftMonth = (delta: number) => {
     const { year, month } = parseMonthYear(monthYear);
@@ -994,10 +1013,20 @@ export default function ReportsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">ทะเบียนรถ (ถ้ามี)</label>
-                  <input value={feForm.truck_license_plate} onChange={e => setFeForm(p => ({ ...p, truck_license_plate: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="เว้นว่างถ้าเป็นของบริษัท" />
+                  <label className="block text-xs font-medium text-slate-600 mb-1">ทะเบียนรถ</label>
+                  <select
+                    value={feForm.truck_license_plate}
+                    onChange={e => setFeForm(p => ({ ...p, truck_license_plate: e.target.value }))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  >
+                    <option value="">— ไม่ระบุรถ (ค่าใช้จ่ายบริษัท) —</option>
+                    {driverPlates.map(d => (
+                      <option key={d.id} value={d.license_plate}>
+                        {d.nickname} — {d.license_plate}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-400 mt-1">เลือกรถที่ค่าใช้จ่ายนี้ผูกด้วย หากเป็นค่าใช้จ่ายของบริษัทให้เว้นว่าง</p>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">จำนวนเงิน/เดือน (บาท) *</label>
@@ -1053,8 +1082,7 @@ export default function ReportsPage() {
   );
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
+// ─── Sub-components ────────────────────�
 function SummaryCard({ label, value, icon, color, bg }: {
   label: string; value: string; icon: string; color: string; bg: string;
 }) {
