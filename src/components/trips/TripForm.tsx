@@ -142,11 +142,16 @@ export default function TripForm({
   }, [transportPrice, noTripPay, setValue]);
 
   // Auto-calc distance when odometer changes
+  // Only overwrite distance if odometer_end > 0 (user actually entered odometer data)
+  // If both are 0, keep the manually-entered distance value intact
   const odomStart = watch('odometer_start');
   const odomEnd   = watch('odometer_end');
+  const odomEndNum = safeNumber(odomEnd);
   useEffect(() => {
-    setValue('distance', calcDistance(safeNumber(odomStart), safeNumber(odomEnd)));
-  }, [odomStart, odomEnd, setValue]);
+    if (odomEndNum > 0) {
+      setValue('distance', calcDistance(safeNumber(odomStart), odomEndNum));
+    }
+  }, [odomStart, odomEndNum, setValue]);
 
   // ── Dropdown state ──────────────────────────────────────
   const [showProduct, setShowProduct] = useState(false);
@@ -238,8 +243,19 @@ export default function TripForm({
               <input type="number" {...register('odometer_end')} className="form-input" placeholder="0" />
             </div>
             <div>
-              <label className="form-label text-xs">ระยะทาง (กม.)</label>
-              <input type="number" {...register('distance')} readOnly className="form-input" />
+              <label className="form-label text-xs">
+                ระยะทาง (กม.)
+                {odomEndNum > 0
+                  ? <span className="text-blue-500 text-xs ml-1">auto</span>
+                  : <span className="text-slate-400 text-xs ml-1">กรอกเอง</span>}
+              </label>
+              <input
+                type="number"
+                {...register('distance')}
+                readOnly={odomEndNum > 0}
+                className={`form-input ${odomEndNum > 0 ? 'bg-slate-50 text-slate-500' : ''}`}
+                placeholder="0"
+              />
             </div>
           </div>
         </div>
