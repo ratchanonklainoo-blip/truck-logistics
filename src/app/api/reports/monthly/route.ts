@@ -27,7 +27,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const lastDay = new Date(Number(yearStr), Number(monthStr), 0).getDate();
   const dateTo = `${yearStr}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
 
-  // 1. All trips in the month
   const { data: trips, error: tripsErr } = await supabase
     .from('trips')
     .select(`
@@ -41,14 +40,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   if (tripsErr) return NextResponse.json({ error: tripsErr.message }, { status: 500 });
 
-  // 2. Fixed expenses (active)
   const { data: fixedExpenses } = await supabase
     .from('fixed_expenses')
     .select('*')
     .eq('is_active', true)
     .is('deleted_at', null);
 
-  // 3. Type definition
   type DriverSummary = {
     driver_id: string;
     driver_name: string;
@@ -72,7 +69,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     net_profit_after_fixed: number;
   };
 
-  // 4. Aggregate per driver
   const summaryMap: Record<string, DriverSummary> = {};
 
   for (const t of (trips || [])) {
@@ -117,7 +113,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     s.total_commission += commission;
   }
 
-  // 5. Enrich fixed expenses
   const enrichedFixed = (fixedExpenses || []).map(fe => ({
     ...fe,
     remaining_installments: fe.total_installments !== null
@@ -125,8 +120,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       : null,
   }));
 
-  // 6. Finalise per-driver + match truck fixed expenses by normalized plate
-  const driverSummaries: DriverSummary[] = Object.values(summaryMap).map(s => {
+  // Finalise per-driver base numbers
+  const rawSummaries = Object.values(summaryMap).map(s => {
     s.total_commission = Math.round(s.total_commission * 100) / 100;
     s.gross_driver_cost = Math.round((s.base_salary + s.total_commission) * 100) / 100;
     s.net_profit = Math.round(
@@ -138,22 +133,31 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     s.avg_fuel_price_per_litre = s.total_fuel_litres > 0
       ? Math.round((s.total_fuel_cost / s.total_fuel_litres) * 100) / 100
       : 0;
-
-    const driverNorm = normalizePlate(s.truck_license_plate);
-    const truckFixed = driverNorm
-      ? enrichedFixed.filter(fe =>
-          fe.is_active && normalizePlate(fe.truck_license_plate) === driverNorm
-        )
-      : [];
-    s.truck_fixed_cost = Math.round(
-      truckFixed.reduce((acc, fe) => acc + fe.amount, 0) * 100
-    ) / 100;
-    s.net_profit_after_fixed = Math.round((s.net_profit - s.truck_fixed_cost) * 100) / 100;
-
     return s;
   });
 
-  // 7. Company-wide totals
+  // Assign truck fixed costs — each truck plate only assigned once,
+  // to the driver with the most trips (busiest driver wins).
+  const assignedPlates = new Set<string>();
+  const sortedForAssign = [...rawSummaries].sort((a, b) => b.trip_count - a.trip_count);
+
+  for (const s of sortedForAssign) {
+    const norm = normalizePlate(s.truck_license_plate);
+    if (!norm || assignedPlates.has(norm)) {
+      s.truck_fixed_cost = 0;
+      s.net_profit_after_fixed = s.net_profit;
+      continue;
+    }
+    const truckFixed = enrichedFixed.filter(
+      fe => fe.is_active && normalizePlate(fe.truck_license_plate) === norm
+    );
+    s.truck_fixed_cost = Math.round(truckFixed.reduce((acc, fe) => acc + fe.amount, 0) * 100) / 100;
+    s.net_profit_after_fixed = Math.round((s.net_profit - s.truck_fixed_cost) * 100) / 100;
+    if (s.truck_fixed_cost > 0) assignedPlates.add(norm);
+  }
+
+  const driverSummaries: DriverSummary[] = rawSummaries;
+
   const totals = driverSummaries.reduce(
     (acc, s) => ({
       total_revenue:     acc.total_revenue     + s.total_revenue,
