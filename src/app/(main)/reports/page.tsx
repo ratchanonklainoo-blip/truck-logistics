@@ -1082,7 +1082,7 @@ export default function ReportsPage() {
   );
 }
 
-// ─── Sub-components ────────────────────�
+// ─── Sub-components ────────────────────
 function SummaryCard({ label, value, icon, color, bg }: {
   label: string; value: string; icon: string; color: string; bg: string;
 }) {
