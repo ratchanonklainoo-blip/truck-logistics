@@ -28,6 +28,8 @@ interface DriverSummary {
   net_profit: number;
   fuel_efficiency: number;
   avg_fuel_price_per_litre: number;
+  truck_fixed_cost: number;
+  net_profit_after_fixed: number;
 }
 
 interface FixedExpense {
@@ -225,10 +227,6 @@ export default function ReportsPage() {
     loadFixed(); loadReport();
   };
 
-  // Per-truck fixed expense lookup
-  const getTruckFixed = (plate: string) =>
-    (report?.fixed_expenses || []).filter(fe => fe.is_active && fe.truck_license_plate === plate);
-
   const totalAllFixed = (report?.fixed_expenses || [])
     .filter(fe => fe.is_active)
     .reduce((s, fe) => s + fe.amount, 0);
@@ -354,30 +352,25 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {report.driver_summaries.map((ds) => {
-                    const truckFixed = getTruckFixed(ds.truck_license_plate);
-                    const truckFixedAmt = truckFixed.reduce((s, f) => s + f.amount, 0);
-                    const net = ds.net_profit - truckFixedAmt;
-                    return (
-                      <tr key={ds.driver_id}>
-                        <td>
-                          <strong>{ds.driver_nickname || ds.driver_name}</strong>
-                          {ds.truck_license_plate && <><br /><span style={{color:'#94a3b8',fontSize:'7.5px'}}>{ds.truck_license_plate}</span></>}
-                        </td>
-                        <td>{ds.trip_count}</td>
-                        <td>{formatCurrency(ds.total_revenue)}</td>
-                        <td className="c-orange">
-                          {formatCurrency(ds.total_fuel_cost)}
-                          {ds.avg_fuel_price_per_litre > 0 && <><br /><span style={{fontSize:'7px',color:'#b45309'}}>฿{formatNumber(ds.avg_fuel_price_per_litre,1)}/ล.</span></>}
-                        </td>
-                        <td className="c-blue">{formatCurrency(ds.gross_driver_cost)}</td>
-                        <td>{ds.total_other_cost > 0 ? formatCurrency(ds.total_other_cost) : '-'}</td>
-                        <td className="c-purple">{truckFixedAmt > 0 ? formatCurrency(truckFixedAmt) : '-'}</td>
-                        <td className={net >= 0 ? 'c-green' : 'c-red'}><strong>{formatCurrency(net)}</strong></td>
-                        <td className="c-teal">{ds.fuel_efficiency > 0 ? `${formatNumber(ds.fuel_efficiency,1)}` : '-'}</td>
-                      </tr>
-                    );
-                  })}
+                  {report.driver_summaries.map((ds) => (
+                    <tr key={ds.driver_id}>
+                      <td>
+                        <strong>{ds.driver_nickname || ds.driver_name}</strong>
+                        {ds.truck_license_plate && <><br /><span style={{color:'#94a3b8',fontSize:'7.5px'}}>{ds.truck_license_plate}</span></>}
+                      </td>
+                      <td>{ds.trip_count}</td>
+                      <td>{formatCurrency(ds.total_revenue)}</td>
+                      <td className="c-orange">
+                        {formatCurrency(ds.total_fuel_cost)}
+                        {ds.avg_fuel_price_per_litre > 0 && <><br /><span style={{fontSize:'7px',color:'#b45309'}}>฿{formatNumber(ds.avg_fuel_price_per_litre,1)}/ล.</span></>}
+                      </td>
+                      <td className="c-blue">{formatCurrency(ds.gross_driver_cost)}</td>
+                      <td>{ds.total_other_cost > 0 ? formatCurrency(ds.total_other_cost) : '-'}</td>
+                      <td className="c-purple">{ds.truck_fixed_cost > 0 ? formatCurrency(ds.truck_fixed_cost) : '-'}</td>
+                      <td className={ds.net_profit_after_fixed >= 0 ? 'c-green' : 'c-red'}><strong>{formatCurrency(ds.net_profit_after_fixed)}</strong></td>
+                      <td className="c-teal">{ds.fuel_efficiency > 0 ? `${formatNumber(ds.fuel_efficiency,1)}` : '-'}</td>
+                    </tr>
+                  ))}
                 </tbody>
                 <tfoot>
                   <tr className="tfoot-row">
@@ -552,10 +545,9 @@ export default function ReportsPage() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {report.driver_summaries.map((ds, i) => {
-                        const truckFixed = getTruckFixed(ds.truck_license_plate);
-                        const truckFixedAmt = truckFixed.reduce((s, f) => s + f.amount, 0);
-                        const net = ds.net_profit - truckFixedAmt;
-                        const margin = ds.total_revenue > 0 ? (net / ds.total_revenue * 100) : 0;
+                        const margin = ds.total_revenue > 0
+                          ? (ds.net_profit_after_fixed / ds.total_revenue * 100)
+                          : 0;
                         return (
                           <tr key={ds.driver_id} className={`${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} hover:bg-blue-50/30 transition-colors`}>
                             <td className="px-4 py-3">
@@ -583,16 +575,13 @@ export default function ReportsPage() {
                             </td>
                             <td className="px-4 py-3 text-right text-slate-600">{formatCurrency(ds.total_other_cost)}</td>
                             <td className="px-4 py-3 text-right text-purple-700">
-                              {truckFixedAmt > 0 ? (
-                                <div>
-                                  <div>{formatCurrency(truckFixedAmt)}</div>
-                                  <div className="text-[11px] text-slate-400">{truckFixed.length} รายการ</div>
-                                </div>
-                              ) : <span className="text-slate-300">-</span>}
+                              {ds.truck_fixed_cost > 0
+                                ? <div>{formatCurrency(ds.truck_fixed_cost)}</div>
+                                : <span className="text-slate-300">-</span>}
                             </td>
                             <td className="px-4 py-3 text-right">
-                              <div className={`font-bold text-base ${net >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                                {formatCurrency(net)}
+                              <div className={`font-bold text-base ${ds.net_profit_after_fixed >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                {formatCurrency(ds.net_profit_after_fixed)}
                               </div>
                               <div className={`text-[11px] font-medium ${margin >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
                                 {margin.toFixed(1)}%
@@ -959,4 +948,4 @@ function StatBox({ label, value }: { label: string; value: string }) {
       <div className="font-bold text-slate-700 mt-0.5">{value}</div>
     </div>
   );
-}'@media screen { #print-area { display: none; } }'
+}

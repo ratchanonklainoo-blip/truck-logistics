@@ -3,13 +3,23 @@ import { createClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
+function normalizePlate(plate: string | null | undefined): string {
+  if (!plate) return '';
+  return plate
+    .replace(/[฀-๿]+/g, '')
+    .replace(/[/\s]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-|-$/g, '')
+    .trim();
+}
+
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const month_year = searchParams.get('month_year'); // e.g. "2025-05"
+  const month_year = searchParams.get('month_year');
   if (!month_year) return NextResponse.json({ error: 'month_year required' }, { status: 400 });
 
   const [yearStr, monthStr] = month_year.split('-');
@@ -17,7 +27,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const lastDay = new Date(Number(yearStr), Number(monthStr), 0).getDate();
   const dateTo = `${yearStr}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
 
-  // ── 1. All trips in the month ──────────────────────────────
+  // 1. All trips in the month
   const { data: trips, error: tripsErr } = await supabase
     .from('trips')
     .select(`
@@ -31,14 +41,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   if (tripsErr) return NextResponse.json({ error: tripsErr.message }, { status: 500 });
 
-  // ── 2. Fixed expenses (active) ─────────────────────────────
+  // 2. Fixed expenses (active)
   const { data: fixedExpenses } = await supabase
     .from('fixed_expenses')
     .select('*')
     .eq('is_active', true)
     .is('deleted_at', null);
 
-  // ── 3. Aggregate per driver ────────────────────────────────
+  // 3. Type definition
   type DriverSummary = {
     driver_id: string;
     driver_name: string;
@@ -56,10 +66,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     total_commission: number;
     gross_driver_cost: number;
     net_profit: number;
-    fuel_efficiency: number;    // km/L
-    avg_fuel_price_per_litre: number; // baht/L = total_fuel_cost / total_fuel_litres
+    fuel_efficiency: number;
+    avg_fuel_price_per_litre: number;
+    truck_fixed_cost: number;
+    net_profit_after_fixed: number;
   };
 
+  // 4. Aggregate per driver
   const summaryMap: Record<string, DriverSummary> = {};
 
   for (const t of (trips || [])) {
@@ -86,6 +99,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         net_profit: 0,
         fuel_efficiency: 0,
         avg_fuel_price_per_litre: 0,
+        truck_fixed_cost: 0,
+        net_profit_after_fixed: 0,
       };
     }
     const s = summaryMap[did];
@@ -96,14 +111,21 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     s.total_distance += t.distance || 0;
     s.total_other_cost += t.other_cost || 0;
     s.total_withdraw += t.withdraw || 0;
-    // commission: use explicit trip_pay if set, else 10% of transport_price
     const commission = (t.trip_pay && t.trip_pay > 0)
       ? t.trip_pay
       : (t.transport_price || 0) * 0.10;
     s.total_commission += commission;
   }
 
-  // ── 4. Finalise per-driver numbers ─────────────────────────
+  // 5. Enrich fixed expenses
+  const enrichedFixed = (fixedExpenses || []).map(fe => ({
+    ...fe,
+    remaining_installments: fe.total_installments !== null
+      ? Math.max(0, fe.total_installments - fe.paid_installments)
+      : null,
+  }));
+
+  // 6. Finalise per-driver + match truck fixed expenses by normalized plate
   const driverSummaries: DriverSummary[] = Object.values(summaryMap).map(s => {
     s.total_commission = Math.round(s.total_commission * 100) / 100;
     s.gross_driver_cost = Math.round((s.base_salary + s.total_commission) * 100) / 100;
@@ -116,28 +138,32 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     s.avg_fuel_price_per_litre = s.total_fuel_litres > 0
       ? Math.round((s.total_fuel_cost / s.total_fuel_litres) * 100) / 100
       : 0;
+
+    const driverNorm = normalizePlate(s.truck_license_plate);
+    const truckFixed = driverNorm
+      ? enrichedFixed.filter(fe =>
+          fe.is_active && normalizePlate(fe.truck_license_plate) === driverNorm
+        )
+      : [];
+    s.truck_fixed_cost = Math.round(
+      truckFixed.reduce((acc, fe) => acc + fe.amount, 0) * 100
+    ) / 100;
+    s.net_profit_after_fixed = Math.round((s.net_profit - s.truck_fixed_cost) * 100) / 100;
+
     return s;
   });
 
-  // ── 5. Fixed expenses enriched with remaining installments ─
-  const enrichedFixed = (fixedExpenses || []).map(fe => {
-    const remaining = fe.total_installments !== null
-      ? Math.max(0, fe.total_installments - fe.paid_installments)
-      : null;
-    return { ...fe, remaining_installments: remaining };
-  });
-
-  // ── 6. Company-wide totals ─────────────────────────────────
+  // 7. Company-wide totals
   const totals = driverSummaries.reduce(
     (acc, s) => ({
-      total_revenue:      acc.total_revenue      + s.total_revenue,
-      total_fuel_cost:    acc.total_fuel_cost    + s.total_fuel_cost,
-      total_other_cost:   acc.total_other_cost   + s.total_other_cost,
-      total_driver_cost:  acc.total_driver_cost  + s.gross_driver_cost,
-      net_profit:         acc.net_profit          + s.net_profit,
-      trip_count:         acc.trip_count          + s.trip_count,
-      total_distance:     acc.total_distance      + s.total_distance,
-      total_fuel_litres:  acc.total_fuel_litres   + s.total_fuel_litres,
+      total_revenue:     acc.total_revenue     + s.total_revenue,
+      total_fuel_cost:   acc.total_fuel_cost   + s.total_fuel_cost,
+      total_other_cost:  acc.total_other_cost  + s.total_other_cost,
+      total_driver_cost: acc.total_driver_cost + s.gross_driver_cost,
+      net_profit:        acc.net_profit         + s.net_profit,
+      trip_count:        acc.trip_count         + s.trip_count,
+      total_distance:    acc.total_distance     + s.total_distance,
+      total_fuel_litres: acc.total_fuel_litres  + s.total_fuel_litres,
     }),
     {
       total_revenue: 0, total_fuel_cost: 0, total_other_cost: 0,
@@ -146,10 +172,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
   );
 
-  // Deduct ALL active fixed expenses (both company-wide AND per-truck)
-  const fixedTotal = enrichedFixed
-    .reduce((s, fe) => s + fe.amount, 0);
-
+  const fixedTotal = enrichedFixed.reduce((s, fe) => s + fe.amount, 0);
   const avgFuelPrice = totals.total_fuel_litres > 0
     ? Math.round((totals.total_fuel_cost / totals.total_fuel_litres) * 100) / 100
     : 0;
