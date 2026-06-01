@@ -107,7 +107,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     s.total_distance += t.distance || 0;
     s.total_other_cost += t.other_cost || 0;
     s.total_withdraw += t.withdraw || 0;
-    const commission = (t.trip_pay && t.trip_pay > 0)
+    // Use explicit trip_pay if set (even 0 = no commission).
+    // Only fallback to 10% if trip_pay is null/undefined (legacy data).
+    const commission = (t.trip_pay != null)
       ? t.trip_pay
       : (t.transport_price || 0) * 0.10;
     s.total_commission += commission;

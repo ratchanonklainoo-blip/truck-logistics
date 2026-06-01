@@ -85,7 +85,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const advanceList = advances || [];
 
   const totalCommission = tripList.reduce((s, t) => {
-    return s + (t.trip_pay > 0 ? t.trip_pay : t.transport_price * 0.10);
+    return s + (t.trip_pay != null ? t.trip_pay : t.transport_price * 0.10);
   }, 0);
   // Use trips.withdraw (actual cash withdrawn per trip) as the deduction source
   // advance_requests are tracked separately for approval flow
