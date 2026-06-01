@@ -264,140 +264,241 @@ export default function ReportsPage() {
       {/* ── Print CSS ── */}
       <style dangerouslySetInnerHTML={{ __html: `
 @media screen { #print-area { display: none; } }
+
+/* ── Page shell ── */
 #print-area {
   font-family: Sarabun, sans-serif;
-  font-size: 8.5px;
-  color: #111;
-  line-height: 1.25;
+  font-size: 10px;
+  color: #1e293b;
+  line-height: 1.4;
   width: 277mm;
-  padding: 6mm 8mm;
+  min-height: 190mm;
+  padding: 7mm 10mm 6mm;
   background: #fff;
   box-sizing: border-box;
-}
-#print-area .pa-header {
-  text-align: center;
-  border-bottom: 1.5px solid #1E3A5F;
-  padding-bottom: 2.5mm;
-  margin-bottom: 3mm;
-}
-#print-area .pa-title { font-size: 13px; font-weight: 700; color: #1E3A5F; }
-#print-area .pa-subtitle { font-size: 10px; font-weight: 600; margin-top: 1mm; }
-#print-area .pa-body {
-  display: grid;
-  grid-template-columns: 60% 38%;
+  display: flex;
+  flex-direction: column;
   gap: 4mm;
 }
-#print-area .pa-section-title {
-  font-size: 9px; font-weight: 700; color: #fff;
-  background: #1E3A5F;
-  padding: 1.5mm 2.5mm; margin-bottom: 1.5mm;
+
+/* ── Header ── */
+#print-area .pa-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 2px solid #1E3A5F;
+  padding-bottom: 3mm;
 }
-#print-area table { width: 100%; border-collapse: collapse; font-size: 8px; }
-#print-area th {
+#print-area .pa-header-left { display: flex; align-items: center; gap: 3mm; }
+#print-area .pa-logo-box {
+  width: 10mm; height: 10mm;
+  background: #1E3A5F; border-radius: 2mm;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 14px; font-weight: 900;
+}
+#print-area .pa-title { font-size: 15px; font-weight: 800; color: #1E3A5F; line-height: 1.1; }
+#print-area .pa-subtitle { font-size: 10px; color: #475569; margin-top: 0.5mm; }
+#print-area .pa-header-right { text-align: right; }
+#print-area .pa-month { font-size: 13px; font-weight: 700; color: #1E3A5F; }
+#print-area .pa-print-date { font-size: 8px; color: #94a3b8; margin-top: 0.5mm; }
+
+/* ── Section label ── */
+#print-area .pa-section-label {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
+  color: #fff; background: #1E3A5F;
+  padding: 1.5mm 3mm; margin-bottom: 1.5mm;
+  text-transform: uppercase;
+}
+
+/* ── Driver table ── */
+#print-area .driver-table { width: 100%; border-collapse: collapse; }
+#print-area .driver-table th {
+  background: #1e293b; color: #fff;
+  padding: 2mm 2.5mm; font-size: 9px; font-weight: 700;
+  text-align: right; white-space: nowrap;
+}
+#print-area .driver-table th:first-child { text-align: left; }
+#print-area .driver-table td {
+  padding: 2.2mm 2.5mm; font-size: 10px;
+  border-bottom: 0.3mm solid #e2e8f0;
+  text-align: right; vertical-align: middle;
+}
+#print-area .driver-table td:first-child { text-align: left; }
+#print-area .driver-table tbody tr:nth-child(odd) td { background: #f8fafc; }
+#print-area .driver-table tbody tr:nth-child(even) td { background: #fff; }
+#print-area .driver-table .row-total td {
+  background: #1E3A5F !important; color: #fff;
+  font-weight: 700; font-size: 10px; padding: 2.5mm 2.5mm;
+}
+#print-area .driver-name { font-size: 11px; font-weight: 700; color: #0f172a; }
+#print-area .driver-plate { font-size: 8.5px; color: #94a3b8; margin-top: 0.3mm; }
+
+/* ── Bottom 2-col ── */
+#print-area .pa-bottom {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5mm;
+  flex: 1;
+}
+
+/* ── Fixed expense table ── */
+#print-area .fixed-table { width: 100%; border-collapse: collapse; }
+#print-area .fixed-table th {
   background: #334155; color: #fff;
-  padding: 1.5mm 2mm; text-align: right;
-  font-weight: 600; white-space: nowrap;
+  padding: 1.8mm 2.5mm; font-size: 9px; font-weight: 600;
+  text-align: right;
 }
-#print-area th:first-child { text-align: left; }
-#print-area td { padding: 1.2mm 2mm; border-bottom: 0.2mm solid #e2e8f0; }
-#print-area td:not(:first-child) { text-align: right; }
-#print-area tr:nth-child(even) td { background: #f8fafc; }
-#print-area .tfoot-row td {
-  background: #1E3A5F; color: #fff;
-  font-weight: 700; font-size: 8.5px;
+#print-area .fixed-table th:first-child { text-align: left; }
+#print-area .fixed-table td {
+  padding: 2mm 2.5mm; font-size: 10px;
+  border-bottom: 0.3mm solid #e2e8f0; text-align: right;
 }
-#print-area .pa-pl { border: 0.3mm solid #e2e8f0; padding: 2mm; margin-bottom: 2mm; }
-#print-area .pa-pl-row { display: flex; justify-content: space-between; padding: 0.8mm 0; font-size: 8px; }
-#print-area .pa-pl-total { display: flex; justify-content: space-between; padding: 1.5mm 0 0; border-top: 0.8mm solid #1E3A5F; font-weight: 700; font-size: 12px; margin-top: 1mm; }
-#print-area .pa-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5mm; margin-top: 2mm; }
-#print-area .pa-stat { background: #f8fafc; border: 0.3mm solid #e2e8f0; padding: 1.5mm 2mm; }
-#print-area .pa-stat-label { font-size: 7.5px; color: #64748b; }
-#print-area .pa-stat-value { font-size: 9.5px; font-weight: 700; color: #1e293b; }
-#print-area .pa-footer { display: flex; justify-content: space-between; margin-top: 3mm; padding-top: 1.5mm; border-top: 0.3mm solid #cbd5e1; font-size: 7px; color: #94a3b8; }
-#print-area .c-green { color: #059669; }
-#print-area .c-red { color: #dc2626; }
-#print-area .c-orange { color: #ea580c; }
-#print-area .c-blue { color: #2563eb; }
+#print-area .fixed-table td:first-child { text-align: left; }
+#print-area .fixed-table tbody tr:nth-child(odd) td { background: #f8fafc; }
+#print-area .fixed-table .row-total td {
+  background: #7c3aed !important; color: #fff;
+  font-weight: 700; font-size: 10px;
+}
+
+/* ── P&L box ── */
+#print-area .pl-box {
+  border: 0.4mm solid #e2e8f0;
+  border-radius: 1.5mm;
+  padding: 3mm 4mm;
+}
+#print-area .pl-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 1.2mm 0; font-size: 10px;
+  border-bottom: 0.2mm solid #f1f5f9;
+}
+#print-area .pl-row:last-child { border-bottom: none; }
+#print-area .pl-label { color: #475569; }
+#print-area .pl-value { font-weight: 600; }
+#print-area .pl-total {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 2mm; padding-top: 2mm;
+  border-top: 0.8mm solid #1E3A5F;
+}
+#print-area .pl-total-label { font-size: 13px; font-weight: 800; color: #0f172a; }
+#print-area .pl-total-value { font-size: 18px; font-weight: 900; }
+#print-area .pl-margin { text-align: right; font-size: 9px; margin-top: 1mm; color: #64748b; }
+
+/* ── Stat chips ── */
+#print-area .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2mm; margin-top: 3mm; }
+#print-area .stat-chip { background: #f8fafc; border: 0.3mm solid #e2e8f0; border-radius: 1.5mm; padding: 2mm 3mm; }
+#print-area .stat-chip-label { font-size: 8px; color: #64748b; }
+#print-area .stat-chip-value { font-size: 11px; font-weight: 700; color: #0f172a; margin-top: 0.5mm; }
+
+/* ── Footer ── */
+#print-area .pa-footer {
+  display: flex; justify-content: space-between;
+  padding-top: 2mm; border-top: 0.3mm solid #cbd5e1;
+  font-size: 8px; color: #94a3b8;
+  margin-top: auto;
+}
+
+/* ── Color utils ── */
+#print-area .c-green  { color: #059669; }
+#print-area .c-red    { color: #dc2626; }
+#print-area .c-orange { color: #d97706; }
+#print-area .c-blue   { color: #2563eb; }
 #print-area .c-purple { color: #7c3aed; }
-#print-area .c-teal { color: #0d9488; }
+#print-area .c-teal   { color: #0d9488; }
+#print-area .c-gray   { color: #64748b; }
 `}} />
 
-      {/* ══════════════════════════════════════════════════════
-          PRINT AREA — hidden on screen, shown on print
-      ══════════════════════════════════════════════════════ */}
+      {/* PRINT AREA */}
       {report !== null && (
         <div id="print-area">
-          {/* ── SINGLE PAGE: Header + 2-col body ── */}
+
+          {/* ── Header ── */}
           <div className="pa-header">
-            <div className="pa-title">หจก.ณสิริทรัพย์ การเกษตร</div>
-            <div className="pa-subtitle">รายงานสรุปประจำเดือน {displayMonthYear(monthYear)}</div>
+            <div className="pa-header-left">
+              <div className="pa-logo-box">ณ</div>
+              <div>
+                <div className="pa-title">หจก.ณสิริทรัพย์ การเกษตร</div>
+                <div className="pa-subtitle">61 หมู่ 2 ต.ท่าข้าวเหลือก อ.แม่จัน จ.เชียงราย</div>
+              </div>
+            </div>
+            <div className="pa-header-right">
+              <div className="pa-month">รายงานประจำเดือน {displayMonthYear(monthYear)}</div>
+              <div className="pa-print-date">พิมพ์วันที่ {printDate}</div>
+            </div>
           </div>
 
-          <div className="pa-body">
-            {/* LEFT: Driver summary table */}
-            <div className="pa-left">
-              <div className="pa-section-title">สรุปผลการดำเนินงานแต่ละคัน</div>
-              <table>
-                <thead>
-                  <tr>
-                    <th>คนขับ / รถ</th>
-                    <th>เที่ยว</th>
-                    <th>รายได้ (฿)</th>
-                    <th>น้ำมัน (฿)</th>
-                    <th>ค่าคนขับ (฿)</th>
-                    <th>ค่าอื่น (฿)</th>
-                    <th>ค่าประจำ (฿)</th>
-                    <th>กำไรสุทธิ (฿)</th>
-                    <th>กม./ล.</th>
+          {/* ── Driver Summary Table ── */}
+          <div>
+            <div className="pa-section-label">สรุปผลการดำเนินงานแต่ละคัน</div>
+            <table className="driver-table">
+              <thead>
+                <tr>
+                  <th style={{textAlign:'left',width:'16%'}}>คนขับ / รถ</th>
+                  <th style={{width:'6%'}}>เที่ยว</th>
+                  <th style={{width:'11%'}}>รายได้ (฿)</th>
+                  <th style={{width:'13%'}}>น้ำมัน (฿)</th>
+                  <th style={{width:'12%'}}>ค่าคนขับ (฿)</th>
+                  <th style={{width:'10%'}}>ค่าอื่น (฿)</th>
+                  <th style={{width:'12%'}}>ค่าประจำ (฿)</th>
+                  <th style={{width:'13%'}}>กำไรสุทธิ (฿)</th>
+                  <th style={{width:'7%'}}>กม./ล.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.driver_summaries.map((ds) => (
+                  <tr key={ds.driver_id}>
+                    <td>
+                      <div className="driver-name">{ds.driver_nickname || ds.driver_name}</div>
+                      {ds.truck_license_plate && <div className="driver-plate">{ds.truck_license_plate}</div>}
+                    </td>
+                    <td style={{textAlign:'center',fontWeight:600}}>{ds.trip_count}</td>
+                    <td style={{fontWeight:600}}>{formatCurrency(ds.total_revenue)}</td>
+                    <td className="c-orange">
+                      <div>{formatCurrency(ds.total_fuel_cost)}</div>
+                      {ds.avg_fuel_price_per_litre > 0 && (
+                        <div style={{fontSize:'8.5px',color:'#b45309'}}>฿{formatNumber(ds.avg_fuel_price_per_litre,1)}/ล.</div>
+                      )}
+                    </td>
+                    <td className="c-blue">{formatCurrency(ds.gross_driver_cost)}</td>
+                    <td className="c-gray">{ds.total_other_cost > 0 ? formatCurrency(ds.total_other_cost) : <span style={{color:'#cbd5e1'}}>-</span>}</td>
+                    <td className="c-purple">{ds.truck_fixed_cost > 0 ? formatCurrency(ds.truck_fixed_cost) : <span style={{color:'#cbd5e1'}}>-</span>}</td>
+                    <td>
+                      <span style={{fontWeight:800,fontSize:'11px'}} className={ds.net_profit_after_fixed >= 0 ? 'c-green' : 'c-red'}>
+                        {formatCurrency(ds.net_profit_after_fixed)}
+                      </span>
+                    </td>
+                    <td className="c-teal" style={{fontWeight:600}}>{ds.fuel_efficiency > 0 ? formatNumber(ds.fuel_efficiency,1) : <span style={{color:'#cbd5e1'}}>-</span>}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {report.driver_summaries.map((ds) => (
-                    <tr key={ds.driver_id}>
-                      <td>
-                        <strong>{ds.driver_nickname || ds.driver_name}</strong>
-                        {ds.truck_license_plate && <><br /><span style={{color:'#94a3b8',fontSize:'7.5px'}}>{ds.truck_license_plate}</span></>}
-                      </td>
-                      <td>{ds.trip_count}</td>
-                      <td>{formatCurrency(ds.total_revenue)}</td>
-                      <td className="c-orange">
-                        {formatCurrency(ds.total_fuel_cost)}
-                        {ds.avg_fuel_price_per_litre > 0 && <><br /><span style={{fontSize:'7px',color:'#b45309'}}>฿{formatNumber(ds.avg_fuel_price_per_litre,1)}/ล.</span></>}
-                      </td>
-                      <td className="c-blue">{formatCurrency(ds.gross_driver_cost)}</td>
-                      <td>{ds.total_other_cost > 0 ? formatCurrency(ds.total_other_cost) : '-'}</td>
-                      <td className="c-purple">{ds.truck_fixed_cost > 0 ? formatCurrency(ds.truck_fixed_cost) : '-'}</td>
-                      <td className={ds.net_profit_after_fixed >= 0 ? 'c-green' : 'c-red'}><strong>{formatCurrency(ds.net_profit_after_fixed)}</strong></td>
-                      <td className="c-teal">{ds.fuel_efficiency > 0 ? `${formatNumber(ds.fuel_efficiency,1)}` : '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="tfoot-row">
-                    <td>รวมทุกคัน</td>
-                    <td>{report.totals.trip_count}</td>
-                    <td>{formatCurrency(report.totals.total_revenue)}</td>
-                    <td>{formatCurrency(report.totals.total_fuel_cost)}</td>
-                    <td>{formatCurrency(report.totals.total_driver_cost)}</td>
-                    <td>{formatCurrency(report.totals.total_other_cost)}</td>
-                    <td>{formatCurrency(totalAllFixed)}</td>
-                    <td><strong>{formatCurrency(report.totals.net_after_fixed)}</strong></td>
-                    <td>{report.totals.avg_fuel_price_per_litre > 0 ? `฿${formatNumber(report.totals.avg_fuel_price_per_litre,1)}/ล.` : '-'}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="row-total">
+                  <td>รวมทุกคัน</td>
+                  <td style={{textAlign:'center'}}>{report.totals.trip_count}</td>
+                  <td>{formatCurrency(report.totals.total_revenue)}</td>
+                  <td>{formatCurrency(report.totals.total_fuel_cost)}</td>
+                  <td>{formatCurrency(report.totals.total_driver_cost)}</td>
+                  <td>{formatCurrency(report.totals.total_other_cost)}</td>
+                  <td>{formatCurrency(totalAllFixed)}</td>
+                  <td style={{fontSize:'12px',fontWeight:900}}>{formatCurrency(report.totals.net_after_fixed)}</td>
+                  <td>{report.totals.avg_fuel_price_per_litre > 0 ? `${formatNumber(report.totals.avg_fuel_price_per_litre,1)}` : '-'}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
 
-            {/* RIGHT: Fixed expenses + P&L */}
-            <div className="pa-right">
-              <div className="pa-section-title">ค่าใช้จ่ายประจำเดือน</div>
-              <table>
+          {/* ── Bottom: Fixed + P&L side by side ── */}
+          <div className="pa-bottom">
+
+            {/* Fixed Expenses */}
+            <div>
+              <div className="pa-section-label">ค่าใช้จ่ายประจำเดือน</div>
+              <table className="fixed-table">
                 <thead>
                   <tr>
-                    <th>รายการ</th>
+                    <th style={{textAlign:'left'}}>รายการ</th>
                     <th>รถ</th>
                     <th>จำนวน (฿)</th>
-                    <th>งวด</th>
+                    <th>งวดคงเหลือ</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -406,56 +507,92 @@ export default function ReportsPage() {
                     const done = isInst && fe.remaining_installments === 0;
                     return (
                       <tr key={fe.id}>
-                        <td><strong>{fe.name}</strong></td>
-                        <td style={{fontSize:'7.5px',color:'#64748b'}}>{fe.truck_license_plate || 'บริษัท'}</td>
-                        <td>{formatCurrency(fe.amount)}</td>
-                        <td style={{fontSize:'7.5px'}}>
-                          {isInst ? (done ? 'ครบ' : `เหลือ ${fe.remaining_installments}`) : 'ต่อเนื่อง'}
+                        <td style={{fontWeight:600}}>{fe.name}</td>
+                        <td style={{fontSize:'9px',color:'#64748b',textAlign:'center'}}>{fe.truck_license_plate || 'บริษัท'}</td>
+                        <td style={{fontWeight:600}}>{formatCurrency(fe.amount)}</td>
+                        <td style={{textAlign:'center',fontSize:'9px'}}>
+                          {isInst ? (done ? <span style={{color:'#059669'}}>ครบแล้ว</span> : `เหลือ ${fe.remaining_installments}`) : <span style={{color:'#94a3b8'}}>ต่อเนื่อง</span>}
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
                 <tfoot>
-                  <tr className="tfoot-row">
-                    <td colSpan={2}>รวมค่าใช้จ่ายประจำ</td>
-                    <td className="c-purple">{formatCurrency(totalAllFixed)}</td>
+                  <tr className="row-total">
+                    <td colSpan={2}>รวมค่าใช้จ่ายประจำทั้งหมด</td>
+                    <td>{formatCurrency(totalAllFixed)}</td>
                     <td></td>
                   </tr>
                 </tfoot>
               </table>
+            </div>
 
-              <div className="pa-section-title" style={{marginTop:'3mm'}}>สรุปผลประกอบการ</div>
-              <div className="pa-pl">
-                <div className="pa-pl-row"><span>รายได้รวม</span><span className="c-green"><strong>{formatCurrency(report.totals.total_revenue)}</strong></span></div>
-                <div className="pa-pl-row"><span>หัก ค่าน้ำมัน</span><span className="c-orange">- {formatCurrency(report.totals.total_fuel_cost)}</span></div>
-                <div className="pa-pl-row"><span>หัก ค่าคนขับ</span><span className="c-blue">- {formatCurrency(report.totals.total_driver_cost)}</span></div>
-                <div className="pa-pl-row"><span>หัก ค่าใช้จ่ายอื่นๆ</span><span>- {formatCurrency(report.totals.total_other_cost)}</span></div>
-                <div className="pa-pl-row"><span>หัก ค่าใช้จ่ายประจำ</span><span className="c-purple">- {formatCurrency(totalAllFixed)}</span></div>
-                <div className="pa-pl-total">
-                  <span>กำไรสุทธิ</span>
-                  <span className={report.totals.net_after_fixed >= 0 ? 'c-green' : 'c-red'}>{formatCurrency(report.totals.net_after_fixed)}</span>
-                </div>
-                {report.totals.total_revenue > 0 && (
-                  <div style={{textAlign:'right',fontSize:'8px',marginTop:'1mm',color:'#64748b'}}>
-                    Margin {(report.totals.net_after_fixed / report.totals.total_revenue * 100).toFixed(1)}%
+            {/* P&L + Stats */}
+            <div style={{display:'flex',flexDirection:'column',gap:'3mm'}}>
+              <div>
+                <div className="pa-section-label">สรุปผลประกอบการ</div>
+                <div className="pl-box">
+                  <div className="pl-row">
+                    <span className="pl-label">รายได้รวมทั้งหมด</span>
+                    <span className="pl-value c-green" style={{fontSize:'12px'}}>{formatCurrency(report.totals.total_revenue)}</span>
                   </div>
-                )}
+                  <div className="pl-row">
+                    <span className="pl-label">หัก ค่าน้ำมัน</span>
+                    <span className="pl-value c-orange">- {formatCurrency(report.totals.total_fuel_cost)}</span>
+                  </div>
+                  <div className="pl-row">
+                    <span className="pl-label">หัก ค่าคนขับ (รอบ + เงินเดือน)</span>
+                    <span className="pl-value c-blue">- {formatCurrency(report.totals.total_driver_cost)}</span>
+                  </div>
+                  <div className="pl-row">
+                    <span className="pl-label">หัก ค่าใช้จ่ายอื่นๆ</span>
+                    <span className="pl-value c-gray">- {formatCurrency(report.totals.total_other_cost)}</span>
+                  </div>
+                  <div className="pl-row">
+                    <span className="pl-label">หัก ค่าใช้จ่ายประจำ</span>
+                    <span className="pl-value c-purple">- {formatCurrency(totalAllFixed)}</span>
+                  </div>
+                  <div className="pl-total">
+                    <span className="pl-total-label">กำไรสุทธิ</span>
+                    <span className={`pl-total-value ${report.totals.net_after_fixed >= 0 ? 'c-green' : 'c-red'}`}>
+                      {formatCurrency(report.totals.net_after_fixed)}
+                    </span>
+                  </div>
+                  {report.totals.total_revenue > 0 && (
+                    <div className="pl-margin">
+                      Margin {(report.totals.net_after_fixed / report.totals.total_revenue * 100).toFixed(1)}%
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="pa-stats">
-                <div className="pa-stat"><div className="pa-stat-label">เฉลี่ยน้ำมัน/ลิตร</div><div className="pa-stat-value">฿{formatNumber(report.totals.avg_fuel_price_per_litre,2)}</div></div>
-                <div className="pa-stat"><div className="pa-stat-label">รวมระยะทาง</div><div className="pa-stat-value">{formatNumber(report.totals.total_distance)} กม.</div></div>
-                <div className="pa-stat"><div className="pa-stat-label">น้ำมันทั้งหมด</div><div className="pa-stat-value">{formatNumber(report.totals.total_fuel_litres,0)} ลิตร</div></div>
-                <div className="pa-stat"><div className="pa-stat-label">จำนวนเที่ยว</div><div className="pa-stat-value">{report.totals.trip_count} เที่ยว</div></div>
+              <div className="stat-grid">
+                <div className="stat-chip">
+                  <div className="stat-chip-label">เฉลี่ยน้ำมัน / ลิตร</div>
+                  <div className="stat-chip-value">฿{formatNumber(report.totals.avg_fuel_price_per_litre,2)}</div>
+                </div>
+                <div className="stat-chip">
+                  <div className="stat-chip-label">รวมระยะทาง</div>
+                  <div className="stat-chip-value">{formatNumber(report.totals.total_distance)} กม.</div>
+                </div>
+                <div className="stat-chip">
+                  <div className="stat-chip-label">น้ำมันทั้งหมด</div>
+                  <div className="stat-chip-value">{formatNumber(report.totals.total_fuel_litres,0)} ลิตร</div>
+                </div>
+                <div className="stat-chip">
+                  <div className="stat-chip-label">จำนวนเที่ยว</div>
+                  <div className="stat-chip-value">{report.totals.trip_count} เที่ยว</div>
+                </div>
               </div>
             </div>
           </div>
 
+          {/* ── Footer ── */}
           <div className="pa-footer">
             <span>หจก.ณสิริทรัพย์ การเกษตร — ระบบ Truck Logistics OS</span>
-            <span>พิมพ์วันที่ {printDate}</span>
+            <span>เอกสารนี้ออกโดยระบบอัตโนมัติ ไม่ต้องลงลายมือชื่อ</span>
           </div>
+
         </div>
       )}
 
