@@ -25,6 +25,7 @@ interface TripRow {
   destination: string;
   transport_price: number;
   trip_pay: number;
+  fuel_litres: number;
   distance: number;
 }
 
@@ -140,7 +141,7 @@ export default function PayrollPage() {
 
     const [{ data: trips }, { data: advances }] = await Promise.all([
       supabase.from('trips')
-        .select('id,date,origin,destination,transport_price,trip_pay,distance')
+        .select('id,date,origin,destination,transport_price,trip_pay,distance,fuel_litres')
         .eq('driver_id', payroll.driver_id)
         .gte('date', dateFrom).lte('date', dateTo)
         .is('deleted_at', null)
@@ -326,7 +327,7 @@ export default function PayrollPage() {
                       <div className="font-semibold text-slate-800 text-sm">
                         {p.driver?.nickname || p.driver?.name || 'ไม่ระบุ'}
                       </div>
-                      <div className="text-xs text-slate-400">{p.trip_count} เที่ยว · {p.total_distance.toLocaleString('th-TH')} กม.</div>
+                      <div className="text-xs text-slate-400">{p.trip_count} เที่ยว · {p.total_distance.toLocaleString('th-TH')} กม.{p.trips ? ` · ${p.trips.reduce((s, t) => s + (t.fuel_litres || 0), 0).toFixed(1)} ลิตร` : ''}</div>
                     </div>
                   </div>
 

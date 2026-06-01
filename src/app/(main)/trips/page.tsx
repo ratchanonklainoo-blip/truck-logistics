@@ -576,7 +576,7 @@ export default function TripsPage() {
         </div>
 
         {/* Driver KPI Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-0 divide-x divide-y divide-slate-100">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-0 divide-x divide-y divide-slate-100">
           {/* จำนวนเที่ยว */}
           <div className="p-4 text-center">
             <div className="flex items-center justify-center gap-1.5 mb-1">
@@ -616,7 +616,19 @@ export default function TripsPage() {
               <p className="text-xs text-red-400 font-medium">ค่าน้ำมัน</p>
             </div>
             <p className="text-2xl font-bold text-red-500">{formatCurrency(driverTotals.fuel_cost)}</p>
-            <p className="text-xs text-slate-400 mt-0.5">{driverTotals.fuel_litres > 0 ? `${formatNumber(driverTotals.fuel_litres)} ลิตร` : '—'}</p>
+            <p className="text-xs text-slate-400 mt-0.5">บาท</p>
+          </div>
+
+          {/* น้ำมันรวม (ลิตร) */}
+          <div className="p-4 text-center bg-amber-50/40">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <Fuel className="w-3.5 h-3.5 text-amber-500" />
+              <p className="text-xs text-amber-500 font-medium">น้ำมันรวม</p>
+            </div>
+            <p className="text-2xl font-bold text-amber-600">
+              {driverTotals.fuel_litres > 0 ? formatNumber(driverTotals.fuel_litres, 1) : '—'}
+            </p>
+            <p className="text-xs text-slate-400 mt-0.5">ลิตร</p>
           </div>
 
           {/* ค่าเที่ยว */}
