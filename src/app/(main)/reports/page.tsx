@@ -8,6 +8,15 @@ import {
 } from 'lucide-react';
 import { formatCurrency, formatNumber, adToBE } from '@/lib/utils';
 
+
+// Helper for PDF: "1,234 บาท" format (no ฿ symbol)
+function fmtB(num: number): string {
+  return new Intl.NumberFormat('th-TH', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(num) + ' บาท';
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface DriverSummary {
@@ -319,7 +328,7 @@ export default function ReportsPage() {
 #print-area .pa-subtitle { font-size: 10px; color: #475569; margin-top: 0.5mm; }
 #print-area .pa-header-right { text-align: right; }
 #print-area .pa-month { font-size: 13px; font-weight: 700; color: #1E3A5F; }
-#print-area .pa-print-date { font-size: 8px; color: #94a3b8; margin-top: 0.5mm; }
+#print-area .pa-print-date { font-size: 8px; color: #475569; margin-top: 0.5mm; }
 
 /* ── Section label ── */
 #print-area .pa-section-label {
@@ -350,7 +359,7 @@ export default function ReportsPage() {
   font-weight: 700; font-size: 10px; padding: 2.5mm 2.5mm;
 }
 #print-area .driver-name { font-size: 11px; font-weight: 700; color: #0f172a; }
-#print-area .driver-plate { font-size: 8.5px; color: #94a3b8; margin-top: 0.3mm; }
+#print-area .driver-plate { font-size: 8.5px; color: #475569; margin-top: 0.3mm; }
 
 /* ── Bottom 2-col ── */
 #print-area .pa-bottom {
@@ -400,19 +409,19 @@ export default function ReportsPage() {
 }
 #print-area .pl-total-label { font-size: 13px; font-weight: 800; color: #0f172a; }
 #print-area .pl-total-value { font-size: 18px; font-weight: 900; }
-#print-area .pl-margin { text-align: right; font-size: 9px; margin-top: 1mm; color: #64748b; }
+#print-area .pl-margin { text-align: right; font-size: 9px; margin-top: 1mm; color: #334155; }
 
 /* ── Stat chips ── */
 #print-area .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2mm; margin-top: 3mm; }
 #print-area .stat-chip { background: #f8fafc; border: 0.3mm solid #e2e8f0; border-radius: 1.5mm; padding: 2mm 3mm; }
-#print-area .stat-chip-label { font-size: 8px; color: #64748b; }
+#print-area .stat-chip-label { font-size: 8px; color: #334155; }
 #print-area .stat-chip-value { font-size: 11px; font-weight: 700; color: #0f172a; margin-top: 0.5mm; }
 
 /* ── Footer ── */
 #print-area .pa-footer {
   display: flex; justify-content: space-between;
   padding-top: 2mm; border-top: 0.3mm solid #cbd5e1;
-  font-size: 8px; color: #94a3b8;
+  font-size: 8px; color: #475569;
   margin-top: auto;
 }
 
@@ -423,7 +432,7 @@ export default function ReportsPage() {
 #print-area .c-blue   { color: #2563eb; }
 #print-area .c-purple { color: #7c3aed; }
 #print-area .c-teal   { color: #0d9488; }
-#print-area .c-gray   { color: #64748b; }
+#print-area .c-gray   { color: #334155; }
 `}} />
 
       {/* PRINT AREA */}
@@ -470,19 +479,19 @@ export default function ReportsPage() {
                       {ds.truck_license_plate && <div className="driver-plate">{ds.truck_license_plate}</div>}
                     </td>
                     <td style={{textAlign:'center',fontWeight:600}}>{ds.trip_count}</td>
-                    <td style={{fontWeight:600}}>{formatCurrency(ds.total_revenue)}</td>
+                    <td style={{fontWeight:600}}>{fmtB(ds.total_revenue)}</td>
                     <td className="c-orange">
-                      <div>{formatCurrency(ds.total_fuel_cost)}</div>
+                      <div>{fmtB(ds.total_fuel_cost)}</div>
                       {ds.avg_fuel_price_per_litre > 0 && (
-                        <div style={{fontSize:'8.5px',color:'#b45309'}}>฿{formatNumber(ds.avg_fuel_price_per_litre,1)}/ล.</div>
+                        <div style={{fontSize:'8.5px',color:'#b45309'}}>{formatNumber(ds.avg_fuel_price_per_litre,1)} บาท/ล.</div>
                       )}
                     </td>
-                    <td className="c-blue">{formatCurrency(ds.gross_driver_cost)}</td>
-                    <td className="c-gray">{ds.total_other_cost > 0 ? formatCurrency(ds.total_other_cost) : <span style={{color:'#cbd5e1'}}>-</span>}</td>
-                    <td className="c-purple">{ds.truck_fixed_cost > 0 ? formatCurrency(ds.truck_fixed_cost) : <span style={{color:'#cbd5e1'}}>-</span>}</td>
+                    <td className="c-blue">{fmtB(ds.gross_driver_cost)}</td>
+                    <td className="c-gray">{ds.total_other_cost > 0 ? fmtB(ds.total_other_cost) : <span style={{color:'#cbd5e1'}}>-</span>}</td>
+                    <td className="c-purple">{ds.truck_fixed_cost > 0 ? fmtB(ds.truck_fixed_cost) : <span style={{color:'#cbd5e1'}}>-</span>}</td>
                     <td>
                       <span style={{fontWeight:800,fontSize:'11px'}} className={ds.net_profit_after_fixed >= 0 ? 'c-green' : 'c-red'}>
-                        {formatCurrency(ds.net_profit_after_fixed)}
+                        {fmtB(ds.net_profit_after_fixed)}
                       </span>
                     </td>
                     <td className="c-teal" style={{fontWeight:600}}>{ds.fuel_efficiency > 0 ? formatNumber(ds.fuel_efficiency,1) : <span style={{color:'#cbd5e1'}}>-</span>}</td>
@@ -493,12 +502,12 @@ export default function ReportsPage() {
                 <tr className="row-total">
                   <td>รวมทุกคัน</td>
                   <td style={{textAlign:'center'}}>{report.totals.trip_count}</td>
-                  <td>{formatCurrency(report.totals.total_revenue)}</td>
-                  <td>{formatCurrency(report.totals.total_fuel_cost)}</td>
-                  <td>{formatCurrency(report.totals.total_driver_cost)}</td>
-                  <td>{formatCurrency(report.totals.total_other_cost)}</td>
-                  <td>{formatCurrency(totalAllFixed)}</td>
-                  <td style={{fontSize:'12px',fontWeight:900}}>{formatCurrency(report.totals.net_after_fixed)}</td>
+                  <td>{fmtB(report.totals.total_revenue)}</td>
+                  <td>{fmtB(report.totals.total_fuel_cost)}</td>
+                  <td>{fmtB(report.totals.total_driver_cost)}</td>
+                  <td>{fmtB(report.totals.total_other_cost)}</td>
+                  <td>{fmtB(totalAllFixed)}</td>
+                  <td style={{fontSize:'12px',fontWeight:900}}>{fmtB(report.totals.net_after_fixed)}</td>
                   <td>{report.totals.avg_fuel_price_per_litre > 0 ? `${formatNumber(report.totals.avg_fuel_price_per_litre,1)}` : '-'}</td>
                 </tr>
               </tfoot>
@@ -527,10 +536,10 @@ export default function ReportsPage() {
                     return (
                       <tr key={fe.id}>
                         <td style={{fontWeight:600}}>{fe.name}</td>
-                        <td style={{fontSize:'9px',color:'#64748b',textAlign:'center'}}>{fe.truck_license_plate || 'บริษัท'}</td>
-                        <td style={{fontWeight:600}}>{formatCurrency(fe.amount)}</td>
+                        <td style={{fontSize:'9px',color:'#334155',textAlign:'center'}}>{fe.truck_license_plate || 'บริษัท'}</td>
+                        <td style={{fontWeight:600}}>{fmtB(fe.amount)}</td>
                         <td style={{textAlign:'center',fontSize:'9px'}}>
-                          {isInst ? (done ? <span style={{color:'#059669'}}>ครบแล้ว</span> : `เหลือ ${fe.remaining_installments}`) : <span style={{color:'#94a3b8'}}>ต่อเนื่อง</span>}
+                          {isInst ? (done ? <span style={{color:'#059669'}}>ครบแล้ว</span> : `เหลือ ${fe.remaining_installments}`) : <span style={{color:'#475569'}}>ต่อเนื่อง</span>}
                         </td>
                       </tr>
                     );
@@ -539,7 +548,7 @@ export default function ReportsPage() {
                 <tfoot>
                   <tr className="row-total">
                     <td colSpan={2}>รวมค่าใช้จ่ายประจำทั้งหมด</td>
-                    <td>{formatCurrency(totalAllFixed)}</td>
+                    <td>{fmtB(totalAllFixed)}</td>
                     <td></td>
                   </tr>
                 </tfoot>
@@ -553,28 +562,28 @@ export default function ReportsPage() {
                 <div className="pl-box">
                   <div className="pl-row">
                     <span className="pl-label">รายได้รวมทั้งหมด</span>
-                    <span className="pl-value c-green" style={{fontSize:'12px'}}>{formatCurrency(report.totals.total_revenue)}</span>
+                    <span className="pl-value c-green" style={{fontSize:'12px'}}>{fmtB(report.totals.total_revenue)}</span>
                   </div>
                   <div className="pl-row">
                     <span className="pl-label">หัก ค่าน้ำมัน</span>
-                    <span className="pl-value c-orange">- {formatCurrency(report.totals.total_fuel_cost)}</span>
+                    <span className="pl-value c-orange">- {fmtB(report.totals.total_fuel_cost)}</span>
                   </div>
                   <div className="pl-row">
                     <span className="pl-label">หัก ค่าคนขับ (รอบ + เงินเดือน)</span>
-                    <span className="pl-value c-blue">- {formatCurrency(report.totals.total_driver_cost)}</span>
+                    <span className="pl-value c-blue">- {fmtB(report.totals.total_driver_cost)}</span>
                   </div>
                   <div className="pl-row">
                     <span className="pl-label">หัก ค่าใช้จ่ายอื่นๆ</span>
-                    <span className="pl-value c-gray">- {formatCurrency(report.totals.total_other_cost)}</span>
+                    <span className="pl-value c-gray">- {fmtB(report.totals.total_other_cost)}</span>
                   </div>
                   <div className="pl-row">
                     <span className="pl-label">หัก ค่าใช้จ่ายประจำ</span>
-                    <span className="pl-value c-purple">- {formatCurrency(totalAllFixed)}</span>
+                    <span className="pl-value c-purple">- {fmtB(totalAllFixed)}</span>
                   </div>
                   <div className="pl-total">
                     <span className="pl-total-label">กำไรสุทธิ</span>
                     <span className={`pl-total-value ${report.totals.net_after_fixed >= 0 ? 'c-green' : 'c-red'}`}>
-                      {formatCurrency(report.totals.net_after_fixed)}
+                      {fmtB(report.totals.net_after_fixed)}
                     </span>
                   </div>
                   {report.totals.total_revenue > 0 && (
