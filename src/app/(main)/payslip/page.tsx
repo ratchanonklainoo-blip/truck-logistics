@@ -100,7 +100,7 @@ export default function PayslipPage() {
 
   const totals = useMemo(() => calculateTotals(driverTrips), [driverTrips]);
 
-  const salary        = selectedDriver?.base_salary || 5000;
+  const salary        = selectedDriver?.base_salary ?? 0;
   const socialSec     = selectedDriver?.social_security || 0;
   const grossIncome   = totals.trip_pay + salary;
   const netPay        = calcNetPay(totals.trip_pay, salary, totals.withdraw, socialSec);

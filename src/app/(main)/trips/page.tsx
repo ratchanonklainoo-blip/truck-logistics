@@ -144,7 +144,7 @@ export default function TripsPage() {
     const totalFuel    = allMonthTrips.reduce((s, t) => s + (t.fuel_cost || 0), 0);
     const totalOther   = allMonthTrips.reduce((s, t) => s + (t.other_cost || 0), 0);
     const activeDrivers = new Set(allMonthTrips.map(t => t.driver_id)).size || 2;
-    const totalSalaries = activeDrivers * (selectedDriver?.base_salary || 5000);
+    const totalSalaries = activeDrivers * (selectedDriver?.base_salary ?? 0);
     const totalExpenses = totalTripPay + totalFuel + totalOther + totalSalaries;
     return { totalRevenue, totalTripPay, totalFuel, totalOther, totalSalaries, totalExpenses, netProfit: totalRevenue - totalExpenses };
   }, [allMonthTrips, selectedDriver]);
