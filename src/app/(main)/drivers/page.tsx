@@ -6,7 +6,7 @@ import {
   UserCheck, Plus, Pencil, CreditCard, Shield,
   ChevronDown, ChevronUp, X, Check, Truck,
   Fuel, BarChart3, Phone, Wallet, MessageCircle,
-  Circle,
+  Circle, Trash2,
 } from 'lucide-react';
 import type { Driver } from '@/types';
 import { formatCurrency } from '@/lib/utils';
@@ -107,6 +107,35 @@ export default function DriversPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDelete = async (d: Driver) => {
+    // Block delete if driver has active job
+    const { data: activeJobs } = await supabase
+      .from('jobs')
+      .select('id')
+      .eq('assigned_driver_id', d.id)
+      .in('status', ['assigned', 'driver_accepted', 'in_progress'])
+      .is('deleted_at', null)
+      .limit(1);
+
+    if (activeJobs && activeJobs.length > 0) {
+      alert(`ไม่สามารถลบ ${d.nickname || d.name} ได้ — มีงานที่กำลังดำเนินอยู่`);
+      return;
+    }
+
+    if (!confirm(`ยืนยันลบคนขับ "${d.nickname || d.name}" ออกจากระบบ?\nข้อมูลการเดินทางและเงินเดือนจะยังคงอยู่`)) return;
+
+    const { error } = await supabase
+      .from('drivers')
+      .update({ deleted_at: new Date().toISOString(), is_active: false })
+      .eq('id', d.id);
+
+    if (error) {
+      alert('ลบไม่สำเร็จ: ' + error.message);
+      return;
+    }
+    load();
   };
 
   const handleEdit = (d: Driver) => {
@@ -243,6 +272,13 @@ export default function DriversPage() {
                     title="แก้ไข"
                   >
                     <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(d)}
+                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="ลบคนขับ"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => toggleExpand(d.id)}
