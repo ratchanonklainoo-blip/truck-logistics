@@ -3,6 +3,10 @@
     {
       "path": "/api/line/daily-summary",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/alerts",
+      "schedule": "0 13 * * *"
     }
   ]
 }

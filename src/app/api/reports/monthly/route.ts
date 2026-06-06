@@ -27,6 +27,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const lastDay = new Date(Number(yearStr), Number(monthStr), 0).getDate();
   const dateTo = `${yearStr}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
 
+  // 1. Trips
   const { data: trips, error: tripsErr } = await supabase
     .from('trips')
     .select(`
@@ -40,12 +41,31 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   if (tripsErr) return NextResponse.json({ error: tripsErr.message }, { status: 500 });
 
+  // 2. Fixed expenses (active)
   const { data: fixedExpenses } = await supabase
     .from('fixed_expenses')
     .select('*')
     .eq('is_active', true)
     .is('deleted_at', null);
 
+  // 3. Expenses table — additional expenses in the month
+  const { data: expensesData } = await supabase
+    .from('expenses')
+    .select('driver_id, amount, category, description, date')
+    .gte('date', dateFrom)
+    .lte('date', dateTo)
+    .is('deleted_at', null);
+
+  // Build driver→expenses map
+  const driverExpensesMap: Record<string, number> = {};
+  for (const e of (expensesData || [])) {
+    if (e.driver_id) {
+      driverExpensesMap[e.driver_id] = (driverExpensesMap[e.driver_id] || 0) + (e.amount || 0);
+    }
+  }
+  const totalExtraExpenses = (expensesData || []).reduce((s, e) => s + (e.amount || 0), 0);
+
+  // 4. Type definition
   type DriverSummary = {
     driver_id: string;
     driver_name: string;
@@ -59,6 +79,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     total_fuel_litres: number;
     total_distance: number;
     total_other_cost: number;
+    total_extra_expenses: number;
     total_withdraw: number;
     total_commission: number;
     gross_driver_cost: number;
@@ -69,6 +90,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     net_profit_after_fixed: number;
   };
 
+  // 5. Aggregate per driver
   const summaryMap: Record<string, DriverSummary> = {};
 
   for (const t of (trips || [])) {
@@ -89,6 +111,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         total_fuel_litres: 0,
         total_distance: 0,
         total_other_cost: 0,
+        total_extra_expenses: 0,
         total_withdraw: 0,
         total_commission: 0,
         gross_driver_cost: 0,
@@ -107,14 +130,16 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     s.total_distance += t.distance || 0;
     s.total_other_cost += t.other_cost || 0;
     s.total_withdraw += t.withdraw || 0;
-    // Use explicit trip_pay if set (even 0 = no commission).
-    // Only fallback to 10% if trip_pay is null/undefined (legacy data).
-    const commission = (t.trip_pay != null)
-      ? t.trip_pay
-      : (t.transport_price || 0) * 0.10;
+    const commission = (t.trip_pay != null) ? t.trip_pay : (t.transport_price || 0) * 0.10;
     s.total_commission += commission;
   }
 
+  // Attach extra expenses per driver
+  for (const did of Object.keys(summaryMap)) {
+    summaryMap[did].total_extra_expenses = Math.round((driverExpensesMap[did] || 0) * 100) / 100;
+  }
+
+  // 6. Enrich fixed expenses
   const enrichedFixed = (fixedExpenses || []).map(fe => ({
     ...fe,
     remaining_installments: fe.total_installments !== null
@@ -122,24 +147,20 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       : null,
   }));
 
-  // Finalise per-driver base numbers
+  // 7. Finalise per-driver + assign truck fixed costs (deduplicate shared plates)
   const rawSummaries = Object.values(summaryMap).map(s => {
     s.total_commission = Math.round(s.total_commission * 100) / 100;
     s.gross_driver_cost = Math.round((s.base_salary + s.total_commission) * 100) / 100;
     s.net_profit = Math.round(
-      (s.total_revenue - s.total_fuel_cost - s.total_other_cost - s.gross_driver_cost) * 100
+      (s.total_revenue - s.total_fuel_cost - s.total_other_cost - s.total_extra_expenses - s.gross_driver_cost) * 100
     ) / 100;
     s.fuel_efficiency = s.total_fuel_litres > 0
-      ? Math.round((s.total_distance / s.total_fuel_litres) * 100) / 100
-      : 0;
+      ? Math.round((s.total_distance / s.total_fuel_litres) * 100) / 100 : 0;
     s.avg_fuel_price_per_litre = s.total_fuel_litres > 0
-      ? Math.round((s.total_fuel_cost / s.total_fuel_litres) * 100) / 100
-      : 0;
+      ? Math.round((s.total_fuel_cost / s.total_fuel_litres) * 100) / 100 : 0;
     return s;
   });
 
-  // Assign truck fixed costs — each truck plate only assigned once,
-  // to the driver with the most trips (busiest driver wins).
   const assignedPlates = new Set<string>();
   const sortedForAssign = [...rawSummaries].sort((a, b) => b.trip_count - a.trip_count);
 
@@ -160,11 +181,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const driverSummaries: DriverSummary[] = rawSummaries;
 
+  // 8. Company-wide totals
   const totals = driverSummaries.reduce(
     (acc, s) => ({
       total_revenue:     acc.total_revenue     + s.total_revenue,
       total_fuel_cost:   acc.total_fuel_cost   + s.total_fuel_cost,
       total_other_cost:  acc.total_other_cost  + s.total_other_cost,
+      total_extra_expenses: acc.total_extra_expenses + s.total_extra_expenses,
       total_driver_cost: acc.total_driver_cost + s.gross_driver_cost,
       net_profit:        acc.net_profit         + s.net_profit,
       trip_count:        acc.trip_count         + s.trip_count,
@@ -173,15 +196,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }),
     {
       total_revenue: 0, total_fuel_cost: 0, total_other_cost: 0,
-      total_driver_cost: 0, net_profit: 0, trip_count: 0,
-      total_distance: 0, total_fuel_litres: 0,
+      total_extra_expenses: 0, total_driver_cost: 0, net_profit: 0,
+      trip_count: 0, total_distance: 0, total_fuel_litres: 0,
     }
   );
 
   const fixedTotal = enrichedFixed.reduce((s, fe) => s + fe.amount, 0);
   const avgFuelPrice = totals.total_fuel_litres > 0
-    ? Math.round((totals.total_fuel_cost / totals.total_fuel_litres) * 100) / 100
-    : 0;
+    ? Math.round((totals.total_fuel_cost / totals.total_fuel_litres) * 100) / 100 : 0;
 
   return NextResponse.json({
     data: {

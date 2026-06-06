@@ -40,6 +40,7 @@ interface DriverSummary {
   avg_fuel_price_per_litre: number;
   truck_fixed_cost: number;
   net_profit_after_fixed: number;
+  total_extra_expenses: number;
 }
 
 interface FixedExpense {
@@ -69,6 +70,7 @@ interface MonthlyTotals {
   total_fixed_expenses: number;
   net_after_fixed: number;
   avg_fuel_price_per_litre: number;
+  total_extra_expenses: number;
 }
 
 interface MonthlyReport {
@@ -573,9 +575,15 @@ export default function ReportsPage() {
                     <span className="pl-value c-blue">- {fmtB(report.totals.total_driver_cost)}</span>
                   </div>
                   <div className="pl-row">
-                    <span className="pl-label">หัก ค่าใช้จ่ายอื่นๆ</span>
+                    <span className="pl-label">หัก ค่าใช้จ่ายอื่นๆ (เที่ยว)</span>
                     <span className="pl-value c-gray">- {fmtB(report.totals.total_other_cost)}</span>
                   </div>
+                  {(report.totals.total_extra_expenses || 0) > 0 && (
+                  <div className="pl-row">
+                    <span className="pl-label">หัก ค่าใช้จ่ายเพิ่มเติม</span>
+                    <span className="pl-value c-gray">- {fmtB(report.totals.total_extra_expenses || 0)}</span>
+                  </div>
+                  )}
                   <div className="pl-row">
                     <span className="pl-label">หัก ค่าใช้จ่ายประจำ</span>
                     <span className="pl-value c-purple">- {fmtB(totalAllFixed)}</span>
@@ -738,7 +746,10 @@ export default function ReportsPage() {
                               <div>{formatCurrency(ds.gross_driver_cost)}</div>
                               <div className="text-[11px] text-slate-400">รอบ {formatCurrency(ds.total_commission)}</div>
                             </td>
-                            <td className="px-4 py-3 text-right text-slate-600">{formatCurrency(ds.total_other_cost)}</td>
+                            <td className="px-4 py-3 text-right text-slate-600">
+                              <div>{formatCurrency(ds.total_other_cost)}</div>
+                              {(ds.total_extra_expenses || 0) > 0 && <div className="text-[11px] text-slate-400">+{formatCurrency(ds.total_extra_expenses)} เพิ่มเติม</div>}
+                            </td>
                             <td className="px-4 py-3 text-right text-purple-700">
                               {ds.truck_fixed_cost > 0
                                 ? <div>{formatCurrency(ds.truck_fixed_cost)}</div>
@@ -858,7 +869,8 @@ export default function ReportsPage() {
                         <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide">หักค่าใช้จ่าย</div>
                         <SummaryRow label="ค่าน้ำมัน" value={`- ${formatCurrency(report.totals.total_fuel_cost)}`} valueClass="text-orange-600" />
                         <SummaryRow label="ค่าคนขับรวม (รอบ+เงินเดือน)" value={`- ${formatCurrency(report.totals.total_driver_cost)}`} valueClass="text-blue-600" />
-                        <SummaryRow label="ค่าใช้จ่ายอื่นๆ" value={`- ${formatCurrency(report.totals.total_other_cost)}`} valueClass="text-slate-600" />
+                        <SummaryRow label="ค่าใช้จ่ายอื่นๆ (เที่ยว)" value={`- ${formatCurrency(report.totals.total_other_cost)}`} valueClass="text-slate-600" />
+                        <SummaryRow label="ค่าใช้จ่ายเพิ่มเติม" value={`- ${formatCurrency(report.totals.total_extra_expenses || 0)}`} valueClass="text-slate-600" />
                         <SummaryRow label="ค่าใช้จ่ายประจำ" value={`- ${formatCurrency(totalAllFixed)}`} valueClass="text-purple-600" />
                       </div>
                       <div className="border-t-2 border-slate-300 pt-3">
