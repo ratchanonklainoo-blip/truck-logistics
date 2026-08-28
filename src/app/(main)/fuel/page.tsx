@@ -309,6 +309,7 @@ async function fetchPrevOdometer(
       .eq('driver_id', driverId)
       .is('deleted_at', null)
       .not('odometer', 'is', null)
+      .neq('status', 'needs_review') // unverified OCR read — don't trust it as a baseline
       .lt('fuel_date', fuelDate)
       .order('fuel_date', { ascending: false })
       .limit(1),
