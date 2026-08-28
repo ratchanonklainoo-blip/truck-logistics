@@ -17,7 +17,7 @@ type Tab = 'customers' | 'payments' | 'prices';
 interface JobSummary {
   id: string; date: string; origin: string; destination: string;
   status: string; selling_price: number; payment_type: string;
-  payment_due_date: string | null;
+  payment_due_date: string | null; customer_id?: string | null;
 }
 
 interface CustomerWithStats extends Customer {
@@ -87,6 +87,8 @@ export default function CustomersPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [expandedJobs, setExpandedJobs] = useState<Record<string, JobSummary[]>>({});
   const [custForm, setCustForm] = useState(EMPTY_CUST);
+  const [custError, setCustError] = useState('');
+  const [custSaving, setCustSaving] = useState(false);
 
   // ── Payments ──
   const [payments, setPayments] = useState<PaymentRow[]>([]);
@@ -94,12 +96,16 @@ export default function CustomersPage() {
   const [showPayForm, setShowPayForm] = useState(false);
   const [payForm, setPayForm] = useState(EMPTY_PAYMENT);
   const [waitingJobs, setWaitingJobs] = useState<JobSummary[]>([]);
+  const [payError, setPayError] = useState('');
+  const [paySaving, setPaySaving] = useState(false);
 
   // ── Route Prices ──
   const [prices, setPrices] = useState<RoutePrice[]>([]);
   const [loadingPrices, setLoadingPrices] = useState(false);
   const [showPriceForm, setShowPriceForm] = useState(false);
   const [priceForm, setPriceForm] = useState(EMPTY_PRICE);
+  const [priceError, setPriceError] = useState('');
+  const [priceSaving, setPriceSaving] = useState(false);
 
   // ── Load Customers ──
   const loadCustomers = useCallback(async () => {
@@ -138,7 +144,7 @@ export default function CustomersPage() {
   // ── Load Waiting Jobs ──
   const loadWaitingJobs = useCallback(async () => {
     const { data } = await supabase.from('jobs')
-      .select('id,date,origin,destination,status,selling_price,payment_type,payment_due_date')
+      .select('id,date,origin,destination,status,selling_price,payment_type,payment_due_date,customer_id')
       .eq('status', 'waiting_payment').is('deleted_at', null).order('date', { ascending: false });
     setWaitingJobs((data || []) as JobSummary[]);
   }, [supabase]);
@@ -181,11 +187,15 @@ export default function CustomersPage() {
   // ── Save Customer ──
   const saveCust = async (e: React.FormEvent) => {
     e.preventDefault();
+    setCustError(''); setCustSaving(true);
     const payload = { ...custForm, credit_days: custForm.credit_days ? Number(custForm.credit_days) : null };
-    if (editingCust) {
-      await supabase.from('customers').update(payload).eq('id', editingCust.id);
-    } else {
-      await supabase.from('customers').insert(payload);
+    const { error } = editingCust
+      ? await supabase.from('customers').update(payload).eq('id', editingCust.id)
+      : await supabase.from('customers').insert(payload);
+    setCustSaving(false);
+    if (error) {
+      setCustError(`บันทึกไม่สำเร็จ: ${error.message}`);
+      return;
     }
     setShowCustForm(false); setEditingCust(null); setCustForm(EMPTY_CUST);
     loadCustomers();
@@ -200,13 +210,15 @@ export default function CustomersPage() {
       credit_days: c.credit_days ? String(c.credit_days) : '',
       notes: c.notes || '',
     });
+    setCustError('');
     setShowCustForm(true);
   };
 
   // ── Save Payment ──
   const savePayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    await supabase.from('customer_payments').insert({
+    setPayError(''); setPaySaving(true);
+    const { error } = await supabase.from('customer_payments').insert({
       customer_id: payForm.customer_id || null,
       job_id: payForm.job_id || null,
       amount: Number(payForm.amount),
@@ -215,10 +227,22 @@ export default function CustomersPage() {
       reference_no: payForm.reference_no || null,
       notes: payForm.notes || null,
     });
+    if (error) {
+      setPaySaving(false);
+      setPayError(`บันทึกรับเงินไม่สำเร็จ: ${error.message}`);
+      return;
+    }
     // Mark job as closed if full payment
     if (payForm.job_id) {
-      await supabase.from('jobs').update({ status: 'closed' }).eq('id', payForm.job_id);
+      const { error: jobError } = await supabase.from('jobs').update({ status: 'closed' }).eq('id', payForm.job_id);
+      if (jobError) {
+        setPaySaving(false);
+        setPayError(`บันทึกรับเงินสำเร็จ แต่ปิดงานไม่สำเร็จ: ${jobError.message}`);
+        loadPayments(); loadWaitingJobs(); loadCustomers();
+        return;
+      }
     }
+    setPaySaving(false);
     setShowPayForm(false); setPayForm(EMPTY_PAYMENT);
     loadPayments(); loadWaitingJobs(); loadCustomers();
   };
@@ -226,20 +250,30 @@ export default function CustomersPage() {
   // ── Save Route Price ──
   const savePrice = async (e: React.FormEvent) => {
     e.preventDefault();
-    await supabase.from('route_prices').insert({
+    setPriceError(''); setPriceSaving(true);
+    const { error } = await supabase.from('route_prices').insert({
       origin: priceForm.origin,
       destination: priceForm.destination,
       customer_id: priceForm.customer_id || null,
       agreed_price: Number(priceForm.agreed_price),
       notes: priceForm.notes || null,
     });
+    setPriceSaving(false);
+    if (error) {
+      setPriceError(`บันทึกไม่สำเร็จ: ${error.message}`);
+      return;
+    }
     setShowPriceForm(false); setPriceForm(EMPTY_PRICE);
     loadPrices();
   };
 
   const deletePrice = async (id: string) => {
     if (!confirm('ลบราคาเส้นทางนี้?')) return;
-    await supabase.from('route_prices').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+    const { error } = await supabase.from('route_prices').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+    if (error) {
+      alert('ลบไม่สำเร็จ: ' + error.message);
+      return;
+    }
     loadPrices();
   };
 
@@ -268,19 +302,19 @@ export default function CustomersPage() {
         </div>
         <div className="flex gap-2">
           {tab === 'customers' && (
-            <button onClick={() => { setEditingCust(null); setCustForm(EMPTY_CUST); setShowCustForm(true); }}
+            <button onClick={() => { setEditingCust(null); setCustForm(EMPTY_CUST); setCustError(''); setShowCustForm(true); }}
               className="btn-primary text-sm">
               <Plus className="w-4 h-4" /> เพิ่มลูกค้า
             </button>
           )}
           {tab === 'payments' && (
-            <button onClick={() => { setShowPayForm(true); loadWaitingJobs(); }}
+            <button onClick={() => { setPayError(''); setShowPayForm(true); loadWaitingJobs(); }}
               className="btn-primary text-sm">
               <Banknote className="w-4 h-4" /> บันทึกรับเงิน
             </button>
           )}
           {tab === 'prices' && (
-            <button onClick={() => setShowPriceForm(true)} className="btn-primary text-sm">
+            <button onClick={() => { setPriceError(''); setShowPriceForm(true); }} className="btn-primary text-sm">
               <Plus className="w-4 h-4" /> เพิ่มราคาเส้นทาง
             </button>
           )}
@@ -313,7 +347,7 @@ export default function CustomersPage() {
       {tab === 'customers' && (
         <>
           {/* Summary */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
               <div className="text-2xl font-bold text-slate-800">{customers.length}</div>
               <div className="text-sm text-slate-500">ลูกค้าทั้งหมด</div>
@@ -426,7 +460,7 @@ export default function CustomersPage() {
       {tab === 'payments' && (
         <>
           {/* Summary */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className={`bg-white rounded-xl border p-4 shadow-sm ${totalOverdue > 0 ? 'border-red-300 bg-red-50' : 'border-slate-200'}`}>
               <div className="flex items-center gap-2 mb-1">
                 <AlertCircle className={`w-4 h-4 ${totalOverdue > 0 ? 'text-red-500' : 'text-slate-300'}`} />
@@ -486,7 +520,8 @@ export default function CustomersPage() {
                       </div>
                       <button
                         onClick={() => {
-                          setPayForm({ ...EMPTY_PAYMENT, job_id: j.id, amount: String(j.selling_price) });
+                          setPayForm({ ...EMPTY_PAYMENT, job_id: j.id, amount: String(j.selling_price), customer_id: j.customer_id || '' });
+                          setPayError('');
                           setShowPayForm(true);
                         }}
                         className="btn-primary text-xs px-3 py-1.5 flex-shrink-0">
@@ -616,6 +651,9 @@ export default function CustomersPage() {
               <button onClick={() => setShowCustForm(false)}><X className="w-5 h-5 text-slate-400" /></button>
             </div>
             <form onSubmit={saveCust} className="p-5 space-y-3">
+              {custError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg">{custError}</div>
+              )}
               <div>
                 <label className="form-label">ชื่อลูกค้า *</label>
                 <input className="form-input" required value={custForm.name} onChange={e => fc('name', e.target.value)} />
@@ -656,7 +694,9 @@ export default function CustomersPage() {
               </div>
               <div className="flex gap-3 justify-end pt-2">
                 <button type="button" onClick={() => setShowCustForm(false)} className="btn-secondary">ยกเลิก</button>
-                <button type="submit" className="btn-primary"><Check className="w-4 h-4" /> บันทึก</button>
+                <button type="submit" disabled={custSaving} className="btn-primary">
+                  <Check className="w-4 h-4" /> {custSaving ? 'กำลังบันทึก...' : 'บันทึก'}
+                </button>
               </div>
             </form>
           </div>
@@ -672,11 +712,19 @@ export default function CustomersPage() {
               <button onClick={() => setShowPayForm(false)}><X className="w-5 h-5 text-slate-400" /></button>
             </div>
             <form onSubmit={savePayment} className="p-5 space-y-3">
+              {payError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg">{payError}</div>
+              )}
               <div>
                 <label className="form-label">งาน (รอรับเงิน)</label>
                 <select className="form-input" value={payForm.job_id} onChange={e => {
                   const job = waitingJobs.find(j => j.id === e.target.value);
-                  setPayForm(p => ({ ...p, job_id: e.target.value, amount: job ? String(job.selling_price) : p.amount }));
+                  setPayForm(p => ({
+                    ...p,
+                    job_id: e.target.value,
+                    amount: job ? String(job.selling_price) : p.amount,
+                    customer_id: job?.customer_id ? job.customer_id : p.customer_id,
+                  }));
                 }}>
                   <option value="">— เลือกงาน (ถ้ามี) —</option>
                   {waitingJobs.map(j => (
@@ -727,7 +775,9 @@ export default function CustomersPage() {
               </div>
               <div className="flex gap-3 justify-end pt-2">
                 <button type="button" onClick={() => setShowPayForm(false)} className="btn-secondary">ยกเลิก</button>
-                <button type="submit" className="btn-primary"><Banknote className="w-4 h-4" /> บันทึกรับเงิน</button>
+                <button type="submit" disabled={paySaving} className="btn-primary">
+                  <Banknote className="w-4 h-4" /> {paySaving ? 'กำลังบันทึก...' : 'บันทึกรับเงิน'}
+                </button>
               </div>
             </form>
           </div>
@@ -743,6 +793,9 @@ export default function CustomersPage() {
               <button onClick={() => setShowPriceForm(false)}><X className="w-5 h-5 text-slate-400" /></button>
             </div>
             <form onSubmit={savePrice} className="p-5 space-y-3">
+              {priceError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg">{priceError}</div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="form-label">จากจังหวัด *</label>
@@ -774,7 +827,9 @@ export default function CustomersPage() {
               </div>
               <div className="flex gap-3 justify-end pt-2">
                 <button type="button" onClick={() => setShowPriceForm(false)} className="btn-secondary">ยกเลิก</button>
-                <button type="submit" className="btn-primary"><Check className="w-4 h-4" /> บันทึก</button>
+                <button type="submit" disabled={priceSaving} className="btn-primary">
+                  <Check className="w-4 h-4" /> {priceSaving ? 'กำลังบันทึก...' : 'บันทึก'}
+                </button>
               </div>
             </form>
           </div>

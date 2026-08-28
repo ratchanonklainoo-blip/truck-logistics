@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { Bell, RefreshCw, CheckCircle, AlertTriangle, Info, AlertCircle } from 'lucide-react';
+import { Bell, RefreshCw, CheckCircle, AlertTriangle, Info, AlertCircle, ArrowRight } from 'lucide-react';
 
 interface Alert {
   id: string; type: string; severity: string; title: string; message: string;
@@ -10,12 +11,12 @@ interface Alert {
   driver_id: string | null; job_id: string | null;
 }
 
-const TYPE_CONFIG: Record<string, { label: string; icon: typeof AlertTriangle }> = {
-  fuel_anomaly:       { label: 'น้ำมันผิดปกติ',    icon: AlertTriangle },
-  route_anomaly:      { label: 'เส้นทางผิดปกติ',   icon: AlertTriangle },
-  low_profit:         { label: 'กำไรต่ำ',           icon: AlertCircle },
-  overdue_customer:   { label: 'ลูกค้าค้างชำระ',  icon: AlertCircle },
-  advance_over_limit: { label: 'เบิกเกินวงเงิน',  icon: AlertTriangle },
+const TYPE_CONFIG: Record<string, { label: string; icon: typeof AlertTriangle; href?: string; hrefLabel?: string }> = {
+  fuel_anomaly:       { label: 'น้ำมันผิดปกติ',    icon: AlertTriangle, href: '/fuel',     hrefLabel: 'ไปหน้าน้ำมัน' },
+  route_anomaly:      { label: 'เส้นทางผิดปกติ',   icon: AlertTriangle, href: '/trips',    hrefLabel: 'ไปหน้าเที่ยววิ่ง' },
+  low_profit:         { label: 'กำไรต่ำ',           icon: AlertCircle,   href: '/jobs',     hrefLabel: 'ไปหน้างาน' },
+  overdue_customer:   { label: 'ลูกค้าค้างชำระ',  icon: AlertCircle,   href: '/jobs',     hrefLabel: 'ไปหน้างาน' },
+  advance_over_limit: { label: 'เบิกเกินวงเงิน',  icon: AlertTriangle, href: '/advances', hrefLabel: 'ไปหน้าเบิกเงิน' },
   system:             { label: 'ระบบ',              icon: Info },
 };
 
@@ -26,6 +27,7 @@ const SEVERITY_CONFIG: Record<string, { color: string; bg: string; border: strin
 };
 
 export default function AlertsPage() {
+  const router = useRouter();
   const [supabase] = useState(() => createClient());
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,14 +141,24 @@ export default function AlertsPage() {
                     })}
                   </p>
                 </div>
-                {!alert.is_read && (
-                  <button
-                    onClick={() => markRead(alert.id)}
-                    className="flex-shrink-0 text-xs text-slate-500 hover:text-slate-800 underline self-start mt-1"
-                  >
-                    อ่านแล้ว
-                  </button>
-                )}
+                <div className="flex-shrink-0 flex flex-col items-end gap-2 self-start mt-1">
+                  {tc.href && (
+                    <button
+                      onClick={() => router.push(tc.href!)}
+                      className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"
+                    >
+                      {tc.hrefLabel} <ArrowRight className="w-3 h-3" />
+                    </button>
+                  )}
+                  {!alert.is_read && (
+                    <button
+                      onClick={() => markRead(alert.id)}
+                      className="text-xs text-slate-500 hover:text-slate-800 underline whitespace-nowrap"
+                    >
+                      อ่านแล้ว
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}

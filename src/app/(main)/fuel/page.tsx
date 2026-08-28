@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import {
   Fuel, CheckCircle, Clock, AlertTriangle, Eye, XCircle,
   ChevronDown, ChevronUp, RefreshCw, Filter, BadgeCheck, Banknote,
+  Camera, Zap, Upload, X,
 } from 'lucide-react';
 import type { FuelEvent, Driver } from '@/types';
 import { formatCurrency } from '@/lib/utils';
@@ -13,8 +14,8 @@ import { formatCurrency } from '@/lib/utils';
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: React.ElementType }> = {
   waiting_data:     { label: 'รอรูปภาพ',      color: 'text-slate-600',  bg: 'bg-slate-100',  icon: Clock },
   waiting_ocr:      { label: 'กำลัง OCR',      color: 'text-blue-600',   bg: 'bg-blue-100',   icon: RefreshCw },
-  needs_review:     { label: 'ต้องตรวจสอบ',    color: 'text-orange-600', bg: 'bg-orange-100', icon: AlertTriangle },
-  waiting_approval: { label: 'รอตรวจสอบ',      color: 'text-purple-600', bg: 'bg-purple-100', icon: Eye },
+  needs_review:     { label: 'OCR ไม่ชัด ต้องแก้เอง', color: 'text-orange-600', bg: 'bg-orange-100', icon: AlertTriangle },
+  waiting_approval: { label: 'รอ Bank ตรวจสอบ', color: 'text-purple-600', bg: 'bg-purple-100', icon: Eye },
   waiting_payment:  { label: 'รอจ่ายเงิน',     color: 'text-yellow-600', bg: 'bg-yellow-100', icon: Banknote },
   paid:             { label: 'จ่ายแล้ว',        color: 'text-green-600',  bg: 'bg-green-100',  icon: CheckCircle },
 };
@@ -29,6 +30,8 @@ export default function FuelPage() {
   const [expandedId, setExpandedId]     = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [editingEvent, setEditingEvent] = useState<FuelEvent | null>(null);
+  const [editingPrevOdometer, setEditingPrevOdometer] = useState<number | null>(null);
+  const [showQuickEntry, setShowQuickEntry] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -93,6 +96,8 @@ export default function FuelPage() {
       }
       await loadData();
       setEditingEvent(null);
+    } catch {
+      alert('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบสัญญาณอินเทอร์เน็ตแล้วลองใหม่');
     } finally {
       setActionLoading(null);
     }
@@ -113,6 +118,8 @@ export default function FuelPage() {
         return;
       }
       await loadData();
+    } catch {
+      alert('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบสัญญาณอินเทอร์เน็ตแล้วลองใหม่');
     } finally {
       setActionLoading(null);
     }
@@ -139,13 +146,18 @@ export default function FuelPage() {
             <p className="text-sm text-slate-500">จัดการรายการเติมน้ำมัน + OCR</p>
           </div>
         </div>
-        <button onClick={loadData} className="btn-secondary text-sm">
-          <RefreshCw className="w-4 h-4" /> รีเฟรช
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowQuickEntry(true)} className="btn-primary text-sm bg-orange-600 hover:bg-orange-700">
+            <Zap className="w-4 h-4" /> กรอกด่วน (ถ่ายรูป)
+          </button>
+          <button onClick={loadData} className="btn-secondary text-sm">
+            <RefreshCw className="w-4 h-4" /> รีเฟรช
+          </button>
+        </div>
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard label="รอตรวจสอบ" value={stats.waiting} color="purple" icon={Eye} />
         <StatCard label="รอจ่ายเงิน" value={stats.waitingPayment} color="yellow" icon={Banknote} />
         <StatCard label="ผิดปกติ" value={stats.anomalies} color="red" icon={AlertTriangle} />
@@ -196,7 +208,7 @@ export default function FuelPage() {
             onVerify={handleVerify}
             onPay={handlePay}
             actionLoading={actionLoading}
-            onEdit={() => setEditingEvent(fe)}
+            onEdit={() => { setEditingPrevOdometer(null); setEditingEvent(fe); }}
           />
         ))}
       </div>
@@ -205,11 +217,320 @@ export default function FuelPage() {
       {editingEvent && (
         <VerifyModal
           event={editingEvent}
-          onClose={() => setEditingEvent(null)}
+          prevOdometer={editingPrevOdometer}
+          onClose={() => { setEditingEvent(null); setEditingPrevOdometer(null); }}
           onConfirm={(id, overrides) => handleVerify(id, overrides)}
           loading={actionLoading === editingEvent.id + '-verify'}
         />
       )}
+
+      {/* Quick Entry Modal */}
+      {showQuickEntry && (
+        <QuickEntryModal
+          drivers={drivers}
+          onClose={() => setShowQuickEntry(false)}
+          onCreated={(fe, prevOdometer) => {
+            setShowQuickEntry(false);
+            loadData();
+            setEditingPrevOdometer(prevOdometer);
+            setEditingEvent(fe);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Compress image to a small JPEG blob before upload ──────────
+function compressImage(file: File, maxDim = 1600, quality = 0.82): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('อ่านรูปไม่สำเร็จ'));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { reject(new Error('ประมวลผลรูปไม่สำเร็จ')); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          blob => blob ? resolve(blob) : reject(new Error('ประมวลผลรูปไม่สำเร็จ')),
+          'image/jpeg', quality,
+        );
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ── Upload a compressed photo to Supabase Storage, return a signed URL ─
+// (bucket "receipts" is private — see schema.sql — so OCR/img tags need a
+// signed, time-limited URL rather than a public one)
+async function uploadFuelPhoto(
+  supabase: ReturnType<typeof createClient>, blob: Blob, key: string,
+): Promise<string> {
+  const path = `fuel-quick/${Date.now()}-${key}-${Math.random().toString(36).slice(2)}.jpg`;
+  const { error: upErr } = await supabase.storage.from('receipts').upload(path, blob, {
+    contentType: 'image/jpeg',
+  });
+  if (upErr) throw new Error(`อัปโหลดรูปไม่สำเร็จ: ${upErr.message}`);
+  const { data: signed, error: signErr } = await supabase.storage
+    .from('receipts').createSignedUrl(path, 60 * 60 * 24 * 365);
+  if (signErr || !signed) throw new Error('สร้างลิงก์รูปไม่สำเร็จ');
+  return signed.signedUrl;
+}
+
+// ── Quick Entry Modal — upload photo(s), OCR auto-fills fields ─
+const QUICK_SLOTS = [
+  { key: 'photo_pump_url' as const,     label: 'หน้าปัดปั๊ม (ลิตร + ราคา)' },
+  { key: 'photo_payment_url' as const,  label: 'ใบเสร็จ / หลักฐานจ่ายเงิน' },
+  { key: 'photo_odometer_url' as const, label: 'เลขไมล์รถ' },
+];
+
+// Latest odometer reading for this driver's truck strictly before fuelDate,
+// checked across both fuel_events (OCR readings) and trips (trip odometer_end)
+// since the two aren't linked automatically — see ANALYSIS_FUEL_ENTRY_dev2.md.
+async function fetchPrevOdometer(
+  supabase: ReturnType<typeof createClient>, driverId: string, fuelDate: string,
+): Promise<number | null> {
+  const [{ data: feRows }, { data: tripRows }] = await Promise.all([
+    supabase.from('fuel_events')
+      .select('odometer, fuel_date')
+      .eq('driver_id', driverId)
+      .is('deleted_at', null)
+      .not('odometer', 'is', null)
+      .lt('fuel_date', fuelDate)
+      .order('fuel_date', { ascending: false })
+      .limit(1),
+    supabase.from('trips')
+      .select('odometer_end, date')
+      .eq('driver_id', driverId)
+      .is('deleted_at', null)
+      .not('odometer_end', 'is', null)
+      .lt('date', fuelDate)
+      .order('date', { ascending: false })
+      .limit(1),
+  ]);
+
+  const feRow = feRows?.[0] as { odometer: number; fuel_date: string } | undefined;
+  const tripRow = tripRows?.[0] as { odometer_end: number; date: string } | undefined;
+
+  if (feRow && tripRow) {
+    return feRow.fuel_date >= tripRow.date ? feRow.odometer : tripRow.odometer_end;
+  }
+  return feRow?.odometer ?? tripRow?.odometer_end ?? null;
+}
+
+function QuickEntryModal({
+  drivers, onClose, onCreated,
+}: {
+  drivers: Driver[];
+  onClose: () => void;
+  onCreated: (fe: FuelEvent, prevOdometer: number | null) => void;
+}) {
+  const supabase = createClient();
+  const [fuelDate, setFuelDate] = useState('');
+  const [driverId, setDriverId] = useState('');
+  const [prevOdometer, setPrevOdometer] = useState<number | null>(null);
+  const [prevOdometerLoading, setPrevOdometerLoading] = useState(false);
+  const [photos, setPhotos] = useState<Record<string, string>>({});
+  const [compressing, setCompressing] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const photoCount = Object.keys(photos).length;
+  const readyToUpload = !!driverId && !!fuelDate;
+
+  // Look up the truck's last known odometer reading as soon as both
+  // the vehicle and the fuel date are picked (order affects which
+  // records count as "before this date").
+  useEffect(() => {
+    if (!readyToUpload) { setPrevOdometer(null); return; }
+    let cancelled = false;
+    setPrevOdometerLoading(true);
+    fetchPrevOdometer(supabase, driverId, fuelDate)
+      .then(val => { if (!cancelled) setPrevOdometer(val); })
+      .finally(() => { if (!cancelled) setPrevOdometerLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driverId, fuelDate]);
+
+  const handleFile = async (key: string, file: File | undefined) => {
+    if (!file || !readyToUpload) return;
+    setError(null);
+    setCompressing(key);
+    try {
+      const blob = await compressImage(file);
+      const url = await uploadFuelPhoto(supabase, blob, key);
+      setPhotos(p => ({ ...p, [key]: url }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'ประมวลผลรูปไม่สำเร็จ');
+    } finally {
+      setCompressing(null);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!driverId) { setError('กรุณาเลือกทะเบียนรถ'); return; }
+    if (!fuelDate) { setError('กรุณาเลือกวันที่เติมน้ำมัน'); return; }
+    if (photoCount === 0) { setError('กรุณาแนบรูปอย่างน้อย 1 รูป'); return; }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/fuel/quick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ driver_id: driverId, fuel_date: fuelDate, ...photos }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error || 'เกิดข้อผิดพลาด');
+        return;
+      }
+      onCreated(json.data, prevOdometer);
+    } catch {
+      setError('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบสัญญาณอินเทอร์เน็ตแล้วลองใหม่');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <Zap className="w-5 h-5 text-orange-600" /> กรอกน้ำมันด่วน
+          </h2>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+            <XCircle className="w-5 h-5 text-slate-400" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-slate-500">
+            เลือกวันที่และทะเบียนรถก่อน ระบบจะดึงเลขไมล์เก่าล่าสุดให้อัตโนมัติ จากนั้นถ่าย/อัปโหลดรูปอย่างน้อย 1 รูป ระบบจะอ่านข้อมูลให้อัตโนมัติ แล้วเปิดหน้าตรวจสอบให้แก้ไขก่อนยืนยันทันที
+          </p>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label-text">วันที่เติมน้ำมัน</label>
+              <input
+                type="date"
+                className="form-input"
+                value={fuelDate}
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={e => setFuelDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="label-text">ทะเบียนรถ (เลือกคนขับ)</label>
+              <select className="form-input" value={driverId} onChange={e => setDriverId(e.target.value)}>
+                <option value="">- เลือกทะเบียนรถ -</option>
+                {drivers.map(d => (
+                  <option key={d.id} value={d.id}>{d.license_plate} — {d.nickname}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {readyToUpload && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
+              เลขไมล์เก่าล่าสุด (ก่อนวันที่เลือก):{' '}
+              {prevOdometerLoading ? (
+                <span className="text-blue-400">กำลังค้นหา...</span>
+              ) : prevOdometer != null ? (
+                <b>{prevOdometer.toLocaleString('th-TH')} กม.</b>
+              ) : (
+                <span className="text-slate-500">ไม่พบประวัติ (คันนี้ยังไม่เคยบันทึกไมล์)</span>
+              )}
+            </div>
+          )}
+
+          {!readyToUpload && (
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-500">
+              กรุณาเลือกวันที่และทะเบียนรถก่อน จึงจะแนบรูปได้
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {QUICK_SLOTS.map(({ key, label }) => (
+              <div key={key}>
+                <label className="label-text">{label}</label>
+                {photos[key] ? (
+                  <div className="relative">
+                    <img src={photos[key]} alt={label} className="w-full h-32 object-cover rounded-lg border border-slate-200" />
+                    <button
+                      onClick={() => setPhotos(p => { const n = { ...p }; delete n[key]; return n; })}
+                      className="absolute top-2 right-2 p-1.5 bg-white/90 hover:bg-white rounded-full shadow"
+                    >
+                      <X className="w-4 h-4 text-red-500" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className={`flex items-center justify-center gap-2 w-full h-20 border-2 border-dashed rounded-lg text-sm transition-colors ${
+                    readyToUpload
+                      ? 'border-slate-300 text-slate-400 hover:border-orange-400 hover:text-orange-500 cursor-pointer'
+                      : 'border-slate-200 text-slate-300 cursor-not-allowed'
+                  }`}>
+                    {compressing === key ? (
+                      <div className="w-4 h-4 border-2 border-slate-300 border-t-orange-500 rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Camera className="w-4 h-4" />
+                        <span>ถ่ายรูป / เลือกไฟล์</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      disabled={!readyToUpload}
+                      onChange={e => handleFile(key, e.target.files?.[0])}
+                    />
+                  </label>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="p-6 border-t border-slate-100 flex gap-3 justify-end">
+          <button onClick={onClose} className="btn-secondary">ยกเลิก</button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || !!compressing}
+            className="btn-primary bg-orange-600 hover:bg-orange-700"
+          >
+            {submitting
+              ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              : <Upload className="w-4 h-4" />}
+            {submitting ? 'กำลังอ่านข้อมูล...' : 'ประมวลผลอัตโนมัติ'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -265,7 +586,7 @@ function FuelEventCard({
     }`}>
       {/* Main row */}
       <div
-        className="flex items-center gap-4 p-4 cursor-pointer hover:bg-slate-50 transition-colors"
+        className="flex flex-wrap items-center gap-3 sm:gap-4 p-4 cursor-pointer hover:bg-slate-50 transition-colors"
         onClick={onToggle}
       >
         {/* Status badge */}
@@ -288,7 +609,7 @@ function FuelEventCard({
         </div>
 
         {/* OCR Data */}
-        <div className="text-right hidden sm:block">
+        <div className="text-right">
           {fe.station_name && <div className="text-sm font-medium text-slate-700">{fe.station_name}</div>}
           {fe.amount_baht != null && (
             <div className="text-sm text-orange-600 font-bold">{formatCurrency(fe.amount_baht)}</div>
@@ -425,11 +746,17 @@ function FuelEventCard({
   );
 }
 
+// Rough sanity ceiling for a single fill-up's distance — generous even
+// for the longest inter-provincial routes this fleet runs, so anything
+// past it is almost certainly an OCR misread rather than a real trip.
+const ODOMETER_DISTANCE_WARN_KM = 2000;
+
 // ── Verify Modal ──────────────────────────────────────────────
 function VerifyModal({
-  event: fe, onClose, onConfirm, loading,
+  event: fe, prevOdometer = null, onClose, onConfirm, loading,
 }: {
   event: FuelEvent;
+  prevOdometer?: number | null;
   onClose: () => void;
   onConfirm: (id: string, overrides?: Partial<FuelEvent>) => void;
   loading: boolean;
@@ -444,6 +771,10 @@ function VerifyModal({
   });
 
   const set = (k: string, v: string | number) => setForm(f => ({ ...f, [k]: v }));
+
+  const distance = prevOdometer != null && form.odometer !== ''
+    ? Number(form.odometer) - prevOdometer
+    : null;
 
   const handleSubmit = () => {
     onConfirm(fe.id, {
@@ -512,6 +843,15 @@ function VerifyModal({
             <div>
               <label className="label-text">เลขไมล์</label>
               <input type="number" className="form-input" value={form.odometer} onChange={e => set('odometer', e.target.value)} />
+              {distance != null && (
+                <p className={`text-xs mt-1 font-medium ${
+                  distance < 0 || distance > ODOMETER_DISTANCE_WARN_KM ? 'text-red-600' : 'text-slate-500'
+                }`}>
+                  ระยะทาง: {distance.toLocaleString('th-TH')} กม. (จากไมล์เก่า {prevOdometer!.toLocaleString('th-TH')})
+                  {distance < 0 && ' — ติดลบ! เลขไมล์ใหม่น้อยกว่าเก่า กรุณาตรวจสอบ'}
+                  {distance > ODOMETER_DISTANCE_WARN_KM && ' — สูงผิดปกติ กรุณาตรวจสอบ'}
+                </p>
+              )}
             </div>
             <div className="col-span-2">
               <label className="label-text">วิธีชำระเงิน</label>

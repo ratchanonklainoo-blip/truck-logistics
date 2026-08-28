@@ -925,7 +925,9 @@ export default function TripsPage() {
             </div>
 
             <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between">
-              <p className="text-xs text-slate-400">CSV format: วันที่, สินค้า, ต้นทาง, ปลายทาง, ไมล์ต้น, ไมล์ปลาย, ค่าขนส่ง, ค่าเที่ยว, น้ำมัน, หมายเหตุ</p>
+              <p className="text-xs text-slate-400">
+                รองรับเฉพาะไฟล์ที่ Export จากระบบนี้เท่านั้น (ปุ่ม &ldquo;Export&rdquo; ด้านบน) — ลำดับคอลัมน์: วันที่, คนขับ, สินค้า, น้ำหนัก, ต้นทาง, ปลายทาง, ไมล์ต้น, ไมล์ปลาย, ระยะ(กม.), ค่าน้ำมัน, ลิตร, ค่าขนส่ง, ค่าเที่ยว, เบิก, รายการอื่นๆ, ค่าอื่นๆ, หมายเหตุ
+              </p>
               <div className="flex gap-2">
                 <button onClick={() => { setShowImport(false); setImportRows([]); setImportDone(null); }}
                   className="btn-secondary text-sm">ปิด</button>

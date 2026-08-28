@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Download, ImageIcon, Calendar, Users, Printer } from 'lucide-react';
 import type { Driver, Trip, MonthFilter } from '@/types';
@@ -11,7 +12,7 @@ import {
   formatThaiDate, formatNumber, formatCurrency,
   calculateTotals, calcNetPay,
   isDateInFilter, getCurrentMonthFilter, getThaiMonthLabel,
-  floorToNearest10,
+  floorToNearest10, adToBE,
 } from '@/lib/utils';
 
 // ── PDF fix: company name is ALWAYS pulled from COMPANY.name constant
@@ -19,7 +20,20 @@ import {
 // ── html2canvas scale: 3, windowWidth: 794px (A4 at 96dpi)
 
 export default function PayslipPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-500 rounded-full animate-spin" />
+      </div>
+    }>
+      <PayslipContent />
+    </Suspense>
+  );
+}
+
+function PayslipContent() {
   const supabase = createClient();
+  const searchParams = useSearchParams();
 
   const [drivers,        setDrivers]        = useState<Driver[]>([]);
   const [allTrips,       setAllTrips]        = useState<Trip[]>([]);
@@ -78,12 +92,22 @@ export default function PayslipPage() {
       ]);
       if (driverData?.length) {
         setDrivers(driverData);
-        setSelectedDriver(driverData[0]);
+        const driverParam = searchParams.get('driver');
+        const fromParam = driverParam ? driverData.find(d => d.id === driverParam) : null;
+        setSelectedDriver(fromParam || driverData[0]);
       }
       setAllTrips(tripData || []);
+
+      const monthParam = searchParams.get('month'); // "YYYY-MM"
+      if (monthParam) {
+        const [y, m] = monthParam.split('-').map(Number);
+        if (y && m) setMonthFilter({ month_index: m - 1, year_be: adToBE(y) });
+      }
+
       setLoading(false);
     };
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const driverTrips = useMemo(() => {

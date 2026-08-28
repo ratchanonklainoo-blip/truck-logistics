@@ -123,6 +123,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   } catch (err) {
     console.error('[OCR] Pipeline error:', err);
     await supabase.from('fuel_events').update({ status: 'needs_review' }).eq('id', fuel_event_id);
+
+    const driver = fuelEvent.driver as { id: string; name: string; line_user_id: string | null } | undefined;
+    if (driver?.line_user_id) {
+      await pushMessage(driver.line_user_id, [REPLIES.ocrNeedsReview()]).catch(() => {});
+    }
+
     return NextResponse.json({ error: 'OCR pipeline failed' }, { status: 500 });
   }
 }

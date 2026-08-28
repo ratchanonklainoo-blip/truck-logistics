@@ -295,7 +295,7 @@ export default function DriversPage() {
                 <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-4 space-y-4">
 
                   {/* Stat cards */}
-                  <div className="grid grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div className="bg-white rounded-xl border border-slate-200 p-3 text-center">
                       <Truck className="w-4 h-4 mx-auto mb-1 text-blue-500" />
                       <div className="text-lg font-bold text-slate-800">{stats.tripCount}</div>
@@ -321,7 +321,7 @@ export default function DriversPage() {
                   </div>
 
                   {/* Detail info */}
-                  <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1.5 text-sm">
                     <div className="flex items-center justify-between py-1 border-b border-slate-100">
                       <span className="text-slate-500 flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" />ประกันสังคม</span>
                       <span className="font-medium text-slate-700">{formatCurrency(d.social_security)}/เดือน</span>
@@ -424,7 +424,7 @@ export default function DriversPage() {
               {/* เงินเดือน / ประกัน / วงเบิก */}
               <div>
                 <label className="form-label text-slate-600 text-xs font-semibold uppercase tracking-wide mb-2 block">การเงิน</label>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="form-label">เงินเดือน (บาท)</label>
                     <input type="number" min="0" className="form-input" value={form.base_salary}

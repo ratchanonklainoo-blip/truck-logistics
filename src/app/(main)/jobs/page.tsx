@@ -133,6 +133,8 @@ export default function JobsPage() {
       });
       if (!res.ok) { const e = await res.json(); alert(e.error); return; }
       await loadData();
+    } catch {
+      alert('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบสัญญาณอินเทอร์เน็ตแล้วลองใหม่');
     } finally { setActionLoading(null); }
   };
 
@@ -140,8 +142,11 @@ export default function JobsPage() {
     if (!confirm('ลบงานนี้?')) return;
     setActionLoading(id + '-delete');
     try {
-      await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
+      if (!res.ok) { const e = await res.json(); alert(e.error || 'ลบงานไม่สำเร็จ'); return; }
       await loadData();
+    } catch {
+      alert('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบสัญญาณอินเทอร์เน็ตแล้วลองใหม่');
     } finally { setActionLoading(null); }
   };
 
@@ -173,7 +178,7 @@ export default function JobsPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { label: 'งานที่ยังเปิด',      value: stats.active,           icon: ClipboardList, color: 'text-blue-600',   bg: 'bg-blue-50' },
           { label: 'กำลังวิ่ง',          value: stats.inProgress,       icon: Truck,         color: 'text-orange-600', bg: 'bg-orange-50' },
@@ -428,6 +433,7 @@ function JobFormModal({ drivers, customers, job, onClose, onSaved }: {
   const [showAiParser, setShowAiParser] = useState(false);
   const [aiText, setAiText] = useState('');
   const [aiParsing, setAiParsing] = useState(false);
+  const [aiError, setAiError] = useState('');
   const [routePriceSuggestion, setRoutePriceSuggestion] = useState<number | null>(null);
 
   const f = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
@@ -444,28 +450,35 @@ function JobFormModal({ drivers, customers, job, onClose, onSaved }: {
   const runAiParser = async () => {
     if (!aiText.trim()) return;
     setAiParsing(true);
+    setAiError('');
     try {
       const res = await fetch('/api/jobs/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: aiText }),
       });
-      const { data } = await res.json();
-      if (data) {
-        setForm(p => ({
-          ...p,
-          origin: data.origin || p.origin,
-          destination: data.destination || p.destination,
-          product: data.product || p.product,
-          weight_kg: data.weight_kg || p.weight_kg,
-          selling_price: data.selling_price ? String(data.selling_price) : p.selling_price,
-          source: 'ai',
-        }));
-        setShowAiParser(false);
-        setAiText('');
+      const body = await res.json();
+      if (!res.ok || !body.data) {
+        setAiError(body.error || 'วิเคราะห์ข้อความไม่สำเร็จ กรุณาลองใหม่');
+        return;
       }
-    } catch {}
-    setAiParsing(false);
+      const data = body.data;
+      setForm(p => ({
+        ...p,
+        origin: data.origin || p.origin,
+        destination: data.destination || p.destination,
+        product: data.product || p.product,
+        weight_kg: data.weight_kg || p.weight_kg,
+        selling_price: data.selling_price ? String(data.selling_price) : p.selling_price,
+        source: 'ai',
+      }));
+      setShowAiParser(false);
+      setAiText('');
+    } catch {
+      setAiError('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบสัญญาณอินเทอร์เน็ตแล้วลองใหม่');
+    } finally {
+      setAiParsing(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -499,6 +512,8 @@ function JobFormModal({ drivers, customers, job, onClose, onSaved }: {
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'เกิดข้อผิดพลาด'); return; }
       onSaved();
+    } catch {
+      setError('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบสัญญาณอินเทอร์เน็ตแล้วลองใหม่');
     } finally { setLoading(false); }
   };
 
@@ -614,19 +629,20 @@ function JobFormModal({ drivers, customers, job, onClose, onSaved }: {
     {/* AI Parser Modal */}
     {showAiParser && (
       <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4"
-        onClick={() => setShowAiParser(false)}>
+        onClick={() => { setShowAiParser(false); setAiError(''); }}>
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg"
           onClick={e => e.stopPropagation()}>
           <div className="p-5 border-b border-slate-100 flex items-center justify-between">
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-violet-500" /> AI สร้างงานจากข้อความ
             </h2>
-            <button onClick={() => setShowAiParser(false)}><X className="w-5 h-5 text-slate-400" /></button>
+            <button onClick={() => { setShowAiParser(false); setAiError(''); }}><X className="w-5 h-5 text-slate-400" /></button>
           </div>
           <div className="p-5 space-y-4">
             <p className="text-sm text-slate-500">
               วาง/พิมพ์ข้อความงานจาก LINE กลุ่ม หรือโทรศัพท์ แล้วกด &quot;วิเคราะห์&quot; ระบบจะดึง origin, destination, สินค้า, ราคา ให้อัตโนมัติ
             </p>
+            {aiError && <div className="bg-red-50 text-red-700 text-sm p-3 rounded-lg">{aiError}</div>}
             <textarea
               className="form-input w-full"
               rows={6}
@@ -668,6 +684,8 @@ function AssignDriverModal({ job, drivers, onClose, onAssigned }:
       });
       if (!res.ok) { const e = await res.json(); alert(e.error); return; }
       onAssigned();
+    } catch {
+      alert('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบสัญญาณอินเทอร์เน็ตแล้วลองใหม่');
     } finally { setLoading(false); }
   };
 

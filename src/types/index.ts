@@ -155,6 +155,7 @@ export interface FuelEvent {
   job_id: string | null;
   driver_id: string;
   trip_id: string | null;
+  fuel_date: string | null;
   status: FuelEventStatus;
   photo_pump_url: string | null;
   photo_payment_url: string | null;
