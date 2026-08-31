@@ -6,10 +6,10 @@ import {
   UserCheck, Plus, Pencil, CreditCard, Shield,
   ChevronDown, ChevronUp, X, Check, Truck,
   Fuel, BarChart3, Phone, Wallet, MessageCircle,
-  Circle, Trash2,
+  Circle, Trash2, MapPin,
 } from 'lucide-react';
 import type { Driver } from '@/types';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, isValidLat, isValidLng } from '@/lib/utils';
 
 interface DriverStats {
   tripCount: number;
@@ -18,6 +18,12 @@ interface DriverStats {
   totalDistance: number;
   avgFuelEfficiency: number;
   activeJob: string | null;
+}
+
+interface TruckLocation {
+  lat: number;
+  lng: number;
+  recorded_at: string;
 }
 
 const EMPTY_FORM = {
@@ -31,6 +37,9 @@ export default function DriversPage() {
   const [supabase] = useState(() => createClient());
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [driverStats, setDriverStats] = useState<Record<string, DriverStats>>({});
+  const [truckLocations, setTruckLocations] = useState<Record<string, TruckLocation>>({});
+  const [locForm, setLocForm] = useState<Record<string, { lat: string; lng: string }>>({});
+  const [savingLoc, setSavingLoc] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Driver | null>(null);
@@ -38,16 +47,24 @@ export default function DriversPage() {
   const [form, setForm] = useState(EMPTY_FORM);
 
   const load = useCallback(async () => {
-    const [{ data: drData }, { data: tripData }, { data: jobData }] = await Promise.all([
+    const [{ data: drData }, { data: tripData }, { data: jobData }, { data: locData }] = await Promise.all([
       supabase.from('drivers').select('*').is('deleted_at', null).order('created_at'),
       supabase.from('trips').select('driver_id,transport_price,trip_pay,distance,fuel_litres,fuel_cost')
         .is('deleted_at', null),
       supabase.from('jobs').select('assigned_driver_id,status,origin,destination')
         .is('deleted_at', null).eq('status', 'in_progress'),
+      supabase.from('truck_locations').select('driver_id,lat,lng,recorded_at')
+        .order('recorded_at', { ascending: false }),
     ]);
     const drList = drData || [];
     const tripList = tripData || [];
     const jobList = jobData || [];
+    // rows come back newest-first, so the first occurrence per driver is the latest
+    const locMap: Record<string, TruckLocation> = {};
+    (locData || []).forEach(l => {
+      if (!locMap[l.driver_id]) locMap[l.driver_id] = { lat: l.lat, lng: l.lng, recorded_at: l.recorded_at };
+    });
+    setTruckLocations(locMap);
     const statsMap: Record<string, DriverStats> = {};
     drList.forEach(d => {
       const dTrips = tripList.filter(t => t.driver_id === d.id);
@@ -157,6 +174,33 @@ export default function DriversPage() {
 
   const toggleExpand = (id: string) => setExpanded(p => p === id ? null : id);
   const f = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
+
+  const setLoc = (driverId: string, k: 'lat' | 'lng', v: string) =>
+    setLocForm(p => ({ ...p, [driverId]: { ...(p[driverId] || { lat: '', lng: '' }), [k]: v } }));
+
+  const handleSaveLocation = async (driverId: string) => {
+    const entry = locForm[driverId];
+    const lat = Number(entry?.lat);
+    const lng = Number(entry?.lng);
+    if (!entry?.lat || !entry?.lng || Number.isNaN(lat) || Number.isNaN(lng)) {
+      alert('กรอกพิกัด lat/lng ให้ครบและเป็นตัวเลข');
+      return;
+    }
+    if (!isValidLat(lat) || !isValidLng(lng)) {
+      alert('พิกัดนอกช่วงที่เป็นไปได้ (lat ต้องอยู่ระหว่าง -90 ถึง 90, lng ระหว่าง -180 ถึง 180)');
+      return;
+    }
+    setSavingLoc(driverId);
+    const { error } = await supabase.from('truck_locations')
+      .insert({ driver_id: driverId, lat, lng, source: 'manual' });
+    setSavingLoc(null);
+    if (error) {
+      alert('บันทึกตำแหน่งไม่สำเร็จ: ' + error.message);
+      return;
+    }
+    setTruckLocations(p => ({ ...p, [driverId]: { lat, lng, recorded_at: new Date().toISOString() } }));
+    setLocForm(p => ({ ...p, [driverId]: { lat: '', lng: '' } }));
+  };
 
   const activeCount = Object.values(driverStats).filter(s => s.activeJob).length;
 
@@ -352,6 +396,42 @@ export default function DriversPage() {
                         <span className="font-medium text-slate-700">{d.driver_key}</span>
                       </div>
                     )}
+                  </div>
+
+                  {/* ตำแหน่งรถล่าสุด (กรอกมือ จาก GPSIAM) */}
+                  <div className="bg-white rounded-xl border border-slate-200 p-3">
+                    <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-600 mb-2">
+                      <MapPin className="w-3.5 h-3.5" /> ตำแหน่งรถล่าสุด (กรอกมือจาก GPSIAM)
+                    </div>
+                    {truckLocations[d.id] && (
+                      <p className="text-xs text-slate-500 mb-2">
+                        บันทึกล่าสุด: {truckLocations[d.id].lat}, {truckLocations[d.id].lng}
+                        {' · '}
+                        {new Date(truckLocations[d.id].recorded_at).toLocaleString('th-TH')}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="number" step="any" min={-90} max={90} placeholder="lat"
+                        className="form-input text-xs w-28"
+                        value={locForm[d.id]?.lat || ''}
+                        onChange={e => setLoc(d.id, 'lat', e.target.value)}
+                      />
+                      <input
+                        type="number" step="any" min={-180} max={180} placeholder="lng"
+                        className="form-input text-xs w-28"
+                        value={locForm[d.id]?.lng || ''}
+                        onChange={e => setLoc(d.id, 'lng', e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        disabled={savingLoc === d.id}
+                        onClick={() => handleSaveLocation(d.id)}
+                        className="btn-secondary text-xs px-3 py-1.5"
+                      >
+                        {savingLoc === d.id ? 'กำลังบันทึก...' : 'บันทึกตำแหน่ง'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

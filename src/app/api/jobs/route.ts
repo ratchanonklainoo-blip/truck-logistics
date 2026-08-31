@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { isValidLat, isValidLng } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,13 +65,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const body = await req.json();
   const { date, customer_id, origin, destination, product, weight_kg,
           selling_price, source, payment_type, payment_due_date,
-          assigned_driver_id, notes } = body;
+          assigned_driver_id, notes,
+          origin_lat, origin_lng, destination_lat, destination_lng } = body;
 
   if (!origin || !destination || selling_price === undefined) {
     return NextResponse.json({ error: 'origin, destination, selling_price required' }, { status: 400 });
   }
   if (payment_type === 'credit' && !payment_due_date) {
     return NextResponse.json({ error: 'payment_due_date required for credit jobs' }, { status: 400 });
+  }
+  for (const [lat, lng] of [[origin_lat, origin_lng], [destination_lat, destination_lng]] as const) {
+    if (lat != null && !isValidLat(Number(lat))) {
+      return NextResponse.json({ error: 'invalid latitude (must be -90..90)' }, { status: 400 });
+    }
+    if (lng != null && !isValidLng(Number(lng))) {
+      return NextResponse.json({ error: 'invalid longitude (must be -180..180)' }, { status: 400 });
+    }
   }
 
   const status = assigned_driver_id ? 'assigned' : 'new';
@@ -81,6 +91,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       date: date || new Date().toISOString().slice(0, 10),
       customer_id: customer_id || null,
       origin, destination, product,
+      origin_lat: origin_lat ?? null,
+      origin_lng: origin_lng ?? null,
+      destination_lat: destination_lat ?? null,
+      destination_lng: destination_lng ?? null,
       weight_kg: weight_kg || null,
       selling_price,
       source: source || 'bank',

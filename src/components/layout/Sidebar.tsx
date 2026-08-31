@@ -7,7 +7,7 @@ import { COMPANY } from '@/lib/constants';
 import {
   Truck, LayoutDashboard, ClipboardList,
   Users, Fuel, MapPin, UserCheck,
-  Bell, Settings, LogOut,
+  Bell, Settings, LogOut, Navigation,
   Wallet, ChevronRight, Ship, FileText, BarChart3, Printer,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
@@ -22,6 +22,7 @@ interface Badges {
 const NAV_ITEMS = [
   { href: '/dashboard',  label: 'ศูนย์ควบคุม',       icon: LayoutDashboard, badge: null },
   { href: '/jobs',       label: 'งานเข้า',             icon: ClipboardList,   badge: 'jobs'     as keyof Badges },
+  { href: '/jobs-nearby', label: 'งานใกล้รถ',          icon: Navigation,      badge: null },
   { href: '/trips',      label: 'เที่ยววิ่ง',         icon: MapPin,          badge: null },
   { href: '/fuel',       label: 'เติมน้ำมัน',         icon: Fuel,            badge: 'fuel'     as keyof Badges },
   { href: '/advances',   label: 'เบิกเงิน',            icon: Wallet,          badge: 'advances' as keyof Badges },
@@ -37,7 +38,7 @@ const NAV_ITEMS = [
 ] as const;
 
 const PHASE_AVAILABLE = new Set([
-  '/dashboard', '/trips', '/jobs', '/customers', '/drivers', '/settings',
+  '/dashboard', '/trips', '/jobs', '/jobs-nearby', '/customers', '/drivers', '/settings',
   '/fuel', '/advances', '/payroll', '/payslip', '/alerts', '/import', '/documents', '/reports',
 ]);
 

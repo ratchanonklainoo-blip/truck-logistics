@@ -1,5 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { isValidLat, isValidLng } from '@/lib/utils';
+
+const COORD_FIELDS = ['origin_lat', 'destination_lat', 'origin_lng', 'destination_lng'] as const;
+
+function validateCoords(rest: Record<string, unknown>): string | null {
+  for (const field of COORD_FIELDS) {
+    const v = rest[field];
+    if (v == null) continue;
+    const n = Number(v);
+    const isLat = field.endsWith('_lat');
+    if (isLat ? !isValidLat(n) : !isValidLng(n)) {
+      return `invalid ${field} (${isLat ? 'must be -90..90' : 'must be -180..180'})`;
+    }
+  }
+  return null;
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -77,6 +93,9 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
   }
 
   // General update (edit fields)
+  const coordErr = validateCoords(rest);
+  if (coordErr) return NextResponse.json({ error: coordErr }, { status: 400 });
+
   const { data, error } = await supabase
     .from('jobs').update({ ...rest, ...(notes !== undefined && { notes }) }).eq('id', id).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

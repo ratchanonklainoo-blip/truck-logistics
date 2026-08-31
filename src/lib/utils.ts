@@ -110,6 +110,26 @@ export function calcDistance(start: number, end: number): number {
   return Math.max(0, end - start);
 }
 
+// ─── Haversine (เส้นตรง, กม.) ─────────────────────────────────
+export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371; // รัศมีโลก (กม.)
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export function isValidLat(lat: number): boolean {
+  return Number.isFinite(lat) && lat >= -90 && lat <= 90;
+}
+
+export function isValidLng(lng: number): boolean {
+  return Number.isFinite(lng) && lng >= -180 && lng <= 180;
+}
+
 // ─── Image compression ──────────────────────────────────────
 export function compressImage(file: File, maxWidth = 800, quality = 0.7): Promise<string> {
   return new Promise((resolve, reject) => {

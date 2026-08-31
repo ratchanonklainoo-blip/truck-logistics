@@ -9,13 +9,15 @@ import {
   Clock, Search, Edit2, Trash2, Calendar,
   Sparkles, FileText,
 } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, isValidLat, isValidLng } from '@/lib/utils';
 
 interface Driver { id: string; name: string; nickname: string; license_plate: string; }
 interface Customer { id: string; name: string; payment_type: string; }
 interface Job {
   id: string; job_number: string; date: string;
   customer_id: string | null; origin: string; destination: string;
+  origin_lat: number | null; origin_lng: number | null;
+  destination_lat: number | null; destination_lng: number | null;
   product: string | null; weight_kg: number | null; selling_price: number;
   source: string; payment_type: string; payment_due_date: string | null;
   assigned_driver_id: string | null; status: string; notes: string | null;
@@ -418,6 +420,10 @@ function JobFormModal({ drivers, customers, job, onClose, onSaved }: {
     customer_id: job?.customer_id || '',
     origin: job?.origin || '',
     destination: job?.destination || '',
+    origin_lat: job?.origin_lat?.toString() || '',
+    origin_lng: job?.origin_lng?.toString() || '',
+    destination_lat: job?.destination_lat?.toString() || '',
+    destination_lng: job?.destination_lng?.toString() || '',
     product: job?.product || '',
     weight_kg: job?.weight_kg?.toString() || '',
     selling_price: job?.selling_price?.toString() || '',
@@ -488,12 +494,30 @@ function JobFormModal({ drivers, customers, job, onClose, onSaved }: {
     if (form.payment_type === 'credit' && !form.payment_due_date) {
       setError('กรุณากรอกวันครบกำหนดสำหรับเครดิต'); return;
     }
+    const coordFields: [string, string][] = [
+      ['origin_lat', 'lat'], ['origin_lng', 'lng'],
+      ['destination_lat', 'lat'], ['destination_lng', 'lng'],
+    ];
+    for (const [key, kind] of coordFields) {
+      const raw = form[key as keyof typeof form] as string;
+      if (!raw) continue;
+      const n = Number(raw);
+      const ok = kind === 'lat' ? isValidLat(n) : isValidLng(n);
+      if (!ok) {
+        setError(`พิกัด ${key} นอกช่วงที่เป็นไปได้ (lat -90..90, lng -180..180)`);
+        return;
+      }
+    }
     setLoading(true); setError('');
     try {
       const payload = {
         date: form.date,
         customer_id: form.customer_id || null,
         origin: form.origin, destination: form.destination,
+        origin_lat: form.origin_lat ? Number(form.origin_lat) : null,
+        origin_lng: form.origin_lng ? Number(form.origin_lng) : null,
+        destination_lat: form.destination_lat ? Number(form.destination_lat) : null,
+        destination_lng: form.destination_lng ? Number(form.destination_lng) : null,
         product: form.product || null,
         weight_kg: form.weight_kg ? Number(form.weight_kg) : null,
         selling_price: Number(form.selling_price),
@@ -565,6 +589,22 @@ function JobFormModal({ drivers, customers, job, onClose, onSaved }: {
             <div>
               <label className="label-text">ปลายทาง *</label>
               <input className="form-input" value={form.destination} onChange={e => { f('destination', e.target.value); lookupRoutePrice(form.origin, e.target.value); }} placeholder="เช่น เชียงราย" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label-text" htmlFor="origin_lat">พิกัดต้นทาง (lat, lng)</label>
+              <div className="grid grid-cols-2 gap-2">
+                <input id="origin_lat" type="number" step="any" min={-90} max={90} className="form-input text-xs" value={form.origin_lat} onChange={e => f('origin_lat', e.target.value)} placeholder="lat ต้นทาง" />
+                <input id="origin_lng" type="number" step="any" min={-180} max={180} className="form-input text-xs" value={form.origin_lng} onChange={e => f('origin_lng', e.target.value)} placeholder="lng ต้นทาง" />
+              </div>
+            </div>
+            <div>
+              <label className="label-text" htmlFor="destination_lat">พิกัดปลายทาง (lat, lng)</label>
+              <div className="grid grid-cols-2 gap-2">
+                <input id="destination_lat" type="number" step="any" min={-90} max={90} className="form-input text-xs" value={form.destination_lat} onChange={e => f('destination_lat', e.target.value)} placeholder="lat ปลายทาง" />
+                <input id="destination_lng" type="number" step="any" min={-180} max={180} className="form-input text-xs" value={form.destination_lng} onChange={e => f('destination_lng', e.target.value)} placeholder="lng ปลายทาง" />
+              </div>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
