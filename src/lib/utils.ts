@@ -130,6 +130,48 @@ export function isValidLng(lng: number): boolean {
   return Number.isFinite(lng) && lng >= -180 && lng <= 180;
 }
 
+export function googleMapsUrl(lat: number, lng: number): string {
+  return `https://www.google.com/maps?q=${lat},${lng}`;
+}
+
+// ─── แยกพิกัดจากลิงก์ Google Maps หรือ "lat,lng" ดิบ ──────────
+// รองรับ: พิกัดดิบ "19.1,100.0" / ?q=lat,lng (ลิงก์แชร์ปกติ) / @lat,lng,zoom (ลิงก์แชร์จากแอปมือถือ) / !3d..!4d.. (พิกัดหมุดร้าน/สถานที่ในลิงก์ place เต็ม)
+// ลิงก์ย่อ (maps.app.goo.gl, goo.gl/maps) ไม่มีพิกัดฝังอยู่ตรงๆ — ต้อง resolve ผ่าน /api/resolve-maps-link ก่อน ดู isShortMapsLink()
+export function parseGoogleMapsLink(input: string): { lat: number; lng: number } | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  const toCoord = (latStr: string, lngStr: string): { lat: number; lng: number } | null => {
+    const lat = Number(latStr);
+    const lng = Number(lngStr);
+    return isValidLat(lat) && isValidLng(lng) ? { lat, lng } : null;
+  };
+
+  const plainMatch = trimmed.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+  if (plainMatch) return toCoord(plainMatch[1], plainMatch[2]);
+
+  const queryMatch = trimmed.match(/[?&](?:q|query|ll|daddr)=(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i);
+  if (queryMatch) return toCoord(queryMatch[1], queryMatch[2]);
+
+  // !3d{lat}!4d{lng} — พิกัดหมุดจริงของสถานที่ ให้ความสำคัญก่อน @ ซึ่งเป็นแค่จุดกึ่งกลางแผนที่
+  const pinMatch = trimmed.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
+  if (pinMatch) return toCoord(pinMatch[1], pinMatch[2]);
+
+  // !1d{lng}!2d{lat} — พิกัด waypoint ที่เจอในลิงก์ปักหมุด/นำทาง (ลำดับ lng ก่อน lat, สลับกับ !3d/!4d)
+  const waypointMatch = trimmed.match(/!1d(-?\d+(?:\.\d+)?)!2d(-?\d+(?:\.\d+)?)/);
+  if (waypointMatch) return toCoord(waypointMatch[2], waypointMatch[1]);
+
+  const atMatch = trimmed.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+  if (atMatch) return toCoord(atMatch[1], atMatch[2]);
+
+  return null;
+}
+
+// ─── ลิงก์ย่อ Google Maps (เช่นกดปุ่ม "แชร์" จากมือถือ) — ไม่มีพิกัดฝังตรงๆ ต้อง resolve ทาง server ก่อน ──────
+export function isShortMapsLink(input: string): boolean {
+  return /^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps)\//i.test(input.trim());
+}
+
 // ─── Image compression ──────────────────────────────────────
 export function compressImage(file: File, maxWidth = 800, quality = 0.7): Promise<string> {
   return new Promise((resolve, reject) => {

@@ -9,7 +9,9 @@ import {
   Circle, Trash2, MapPin,
 } from 'lucide-react';
 import type { Driver } from '@/types';
-import { formatCurrency, isValidLat, isValidLng } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
+import SaveLocationInline from '@/components/drivers/SaveLocationInline';
+import MapsLink from '@/components/ui/MapsLink';
 
 interface DriverStats {
   tripCount: number;
@@ -38,8 +40,6 @@ export default function DriversPage() {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [driverStats, setDriverStats] = useState<Record<string, DriverStats>>({});
   const [truckLocations, setTruckLocations] = useState<Record<string, TruckLocation>>({});
-  const [locForm, setLocForm] = useState<Record<string, { lat: string; lng: string }>>({});
-  const [savingLoc, setSavingLoc] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Driver | null>(null);
@@ -174,33 +174,6 @@ export default function DriversPage() {
 
   const toggleExpand = (id: string) => setExpanded(p => p === id ? null : id);
   const f = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
-
-  const setLoc = (driverId: string, k: 'lat' | 'lng', v: string) =>
-    setLocForm(p => ({ ...p, [driverId]: { ...(p[driverId] || { lat: '', lng: '' }), [k]: v } }));
-
-  const handleSaveLocation = async (driverId: string) => {
-    const entry = locForm[driverId];
-    const lat = Number(entry?.lat);
-    const lng = Number(entry?.lng);
-    if (!entry?.lat || !entry?.lng || Number.isNaN(lat) || Number.isNaN(lng)) {
-      alert('กรอกพิกัด lat/lng ให้ครบและเป็นตัวเลข');
-      return;
-    }
-    if (!isValidLat(lat) || !isValidLng(lng)) {
-      alert('พิกัดนอกช่วงที่เป็นไปได้ (lat ต้องอยู่ระหว่าง -90 ถึง 90, lng ระหว่าง -180 ถึง 180)');
-      return;
-    }
-    setSavingLoc(driverId);
-    const { error } = await supabase.from('truck_locations')
-      .insert({ driver_id: driverId, lat, lng, source: 'manual' });
-    setSavingLoc(null);
-    if (error) {
-      alert('บันทึกตำแหน่งไม่สำเร็จ: ' + error.message);
-      return;
-    }
-    setTruckLocations(p => ({ ...p, [driverId]: { lat, lng, recorded_at: new Date().toISOString() } }));
-    setLocForm(p => ({ ...p, [driverId]: { lat: '', lng: '' } }));
-  };
 
   const activeCount = Object.values(driverStats).filter(s => s.activeJob).length;
 
@@ -404,34 +377,17 @@ export default function DriversPage() {
                       <MapPin className="w-3.5 h-3.5" /> ตำแหน่งรถล่าสุด (กรอกมือจาก GPSIAM)
                     </div>
                     {truckLocations[d.id] && (
-                      <p className="text-xs text-slate-500 mb-2">
+                      <p className="text-xs text-slate-500 mb-2 flex items-center gap-1.5 flex-wrap">
                         บันทึกล่าสุด: {truckLocations[d.id].lat}, {truckLocations[d.id].lng}
                         {' · '}
                         {new Date(truckLocations[d.id].recorded_at).toLocaleString('th-TH')}
+                        <MapsLink lat={truckLocations[d.id].lat} lng={truckLocations[d.id].lng} label="เปิดแผนที่" />
                       </p>
                     )}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <input
-                        type="number" step="any" min={-90} max={90} placeholder="lat"
-                        className="form-input text-xs w-28"
-                        value={locForm[d.id]?.lat || ''}
-                        onChange={e => setLoc(d.id, 'lat', e.target.value)}
-                      />
-                      <input
-                        type="number" step="any" min={-180} max={180} placeholder="lng"
-                        className="form-input text-xs w-28"
-                        value={locForm[d.id]?.lng || ''}
-                        onChange={e => setLoc(d.id, 'lng', e.target.value)}
-                      />
-                      <button
-                        type="button"
-                        disabled={savingLoc === d.id}
-                        onClick={() => handleSaveLocation(d.id)}
-                        className="btn-secondary text-xs px-3 py-1.5"
-                      >
-                        {savingLoc === d.id ? 'กำลังบันทึก...' : 'บันทึกตำแหน่ง'}
-                      </button>
-                    </div>
+                    <SaveLocationInline
+                      driverId={d.id}
+                      onSaved={loc => setTruckLocations(p => ({ ...p, [d.id]: loc }))}
+                    />
                   </div>
                 </div>
               )}

@@ -7,6 +7,8 @@ import {
   AlertTriangle, RefreshCw,
 } from 'lucide-react';
 import { formatCurrency, formatNumber, haversineKm } from '@/lib/utils';
+import SaveLocationInline from '@/components/drivers/SaveLocationInline';
+import MapsLink from '@/components/ui/MapsLink';
 
 interface DriverRow {
   id: string; nickname: string; name: string; license_plate: string;
@@ -44,6 +46,7 @@ export default function JobsNearbyPage() {
   const [loading, setLoading] = useState(true);
   const [radiusKm, setRadiusKm] = useState(0);
   const [sortBy, setSortBy] = useState<'value' | 'distance'>('value');
+  const [editingLocFor, setEditingLocFor] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [{ data: drData }, { data: locData }, { data: jobData }] = await Promise.all([
@@ -169,21 +172,41 @@ export default function JobsNearbyPage() {
 
           return (
             <div key={d.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-3 bg-slate-50 border-b border-slate-100">
+              <div className="flex items-center justify-between px-5 py-3 bg-slate-50 border-b border-slate-100 flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-slate-800">{d.nickname}</span>
                   <span className="text-slate-400 text-sm">{d.license_plate}</span>
                 </div>
-                {loc ? (
-                  <span className="flex items-center gap-1 text-xs text-slate-500">
-                    <MapPin className="w-3.5 h-3.5" />
-                    {loc.lat.toFixed(4)}, {loc.lng.toFixed(4)}
-                    {' · อัปเดต '}
-                    {new Date(loc.recorded_at).toLocaleString('th-TH')}
-                  </span>
-                ) : (
-                  <span className="text-xs text-red-500">ยังไม่มีตำแหน่งรถ — กรอกที่หน้าคนขับ</span>
-                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {loc && (
+                    <span className="flex items-center gap-1 text-xs text-slate-500">
+                      <MapPin className="w-3.5 h-3.5" />
+                      {loc.lat.toFixed(4)}, {loc.lng.toFixed(4)}
+                      {' · อัปเดต '}
+                      {new Date(loc.recorded_at).toLocaleString('th-TH')}
+                      <MapsLink lat={loc.lat} lng={loc.lng} />
+                    </span>
+                  )}
+                  {editingLocFor === d.id ? (
+                    <SaveLocationInline
+                      driverId={d.id}
+                      onSaved={newLoc => {
+                        setTruckLocations(p => ({ ...p, [d.id]: newLoc }));
+                        setEditingLocFor(null);
+                      }}
+                      onCancel={() => setEditingLocFor(null)}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setEditingLocFor(d.id)}
+                      className="btn-secondary text-xs px-2.5 py-1.5"
+                    >
+                      <MapPin className="w-3.5 h-3.5" />
+                      {loc ? 'แก้ไขตำแหน่ง' : 'กรอกตำแหน่งรถ'}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {loc && (
