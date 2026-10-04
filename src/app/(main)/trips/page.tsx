@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { addToSettingList } from '@/lib/settingsList';
 import TripForm from '@/components/trips/TripForm';
 import TripTable from '@/components/trips/TripTable';
 import {
@@ -178,6 +179,15 @@ export default function TripsPage() {
       created_by:      user?.id,
     };
 
+    // เก็บสถานที่/สินค้าที่พิมพ์เองเข้า app_settings (merge จาก DB ล่าสุด ไม่ทับ) ให้ขึ้นในรายการแนะนำครั้งต่อไป
+    const [loc, prod] = await Promise.all([
+      addToSettingList(supabase, 'locations', [payload.origin, payload.destination]),
+      addToSettingList(supabase, 'product_categories', [payload.product]),
+    ]);
+    if (loc.list) setLocations(loc.list);
+    if (prod.list) setProducts(prod.list);
+    if (loc.error || prod.error) alert(`บันทึกเที่ยววิ่งต่อไป แต่${loc.error || prod.error}`);
+
     if (id) {
       await supabase.from('trips').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', id);
     } else {
@@ -197,22 +207,14 @@ export default function TripsPage() {
 
   // ── Add product/location to settings ─────────────────────
   const handleAddProduct = useCallback(async (name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed || products.includes(trimmed)) return;
-    const updated = [...products, trimmed];
-    setProducts(updated);
-    await supabase.from('app_settings')
-      .upsert({ setting_key: 'product_categories', setting_value: updated });
-  }, [products, supabase]);
+    const r = await addToSettingList(supabase, 'product_categories', [name]);
+    if (r.list) setProducts(r.list); else alert(r.error);
+  }, [supabase]);
 
   const handleAddLocation = useCallback(async (name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed || locations.includes(trimmed)) return;
-    const updated = [...locations, trimmed];
-    setLocations(updated);
-    await supabase.from('app_settings')
-      .upsert({ setting_key: 'locations', setting_value: updated });
-  }, [locations, supabase]);
+    const r = await addToSettingList(supabase, 'locations', [name]);
+    if (r.list) setLocations(r.list); else alert(r.error);
+  }, [supabase]);
 
   // ── Odometer settings ─────────────────────────────────────
   const handleSaveOdo = async () => {
@@ -223,7 +225,10 @@ export default function TripsPage() {
       .select('setting_value').eq('setting_key', 'initial_odometers').single();
     const existing = (data?.setting_value as Record<string, number>) || {};
     await supabase.from('app_settings')
-      .upsert({ setting_key: 'initial_odometers', setting_value: { ...existing, [selectedDriver.driver_key]: val } });
+      .upsert(
+        { setting_key: 'initial_odometers', setting_value: { ...existing, [selectedDriver.driver_key]: val } },
+        { onConflict: 'setting_key' },
+      );
     setShowOdoSettings(false);
   };
 

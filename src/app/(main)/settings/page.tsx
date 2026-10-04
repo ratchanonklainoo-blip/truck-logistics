@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Settings, Save, RefreshCw, Plus, X, MessageCircle, CheckCircle2, Clock, Send, ToggleLeft, ToggleRight } from 'lucide-react';
 import { COMPANY } from '@/lib/constants';
+import { addToSettingList, removeFromSettingList, SETTING_SAVE_ERROR, type SettingListKey } from '@/lib/settingsList';
 
 export default function SettingsPage() {
   const supabase = createClient();
@@ -12,6 +13,7 @@ export default function SettingsPage() {
   const [newProduct,  setNewProduct]  = useState('');
   const [newLocation, setNewLocation] = useState('');
   const [saving,  setSaving]  = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [loading, setLoading] = useState(true);
 
   const [managerLineId,       setManagerLineId]       = useState('');
@@ -45,8 +47,20 @@ export default function SettingsPage() {
   }, []);
 
   const save = async (key: string, value: string[] | string | number) => {
-    setSaving(true);
-    await supabase.from('app_settings').upsert({ setting_key: key, setting_value: value });
+    setSaving(true); setSaveError('');
+    const { error } = await supabase.from('app_settings').upsert({ setting_key: key, setting_value: value }, { onConflict: 'setting_key' });
+    if (error) setSaveError(SETTING_SAVE_ERROR);
+    setSaving(false);
+  };
+
+  // เพิ่ม/ลบรายชื่อ: อ่านค่าล่าสุดจาก DB แล้ว merge ก่อนเขียน (ไม่ทับด้วย state เก่า) แล้วค่อยอัปเดตหน้าจอ
+  const changeList = async (
+    key: SettingListKey, setList: (l: string[]) => void,
+    op: () => Promise<{ list: string[] | null; error: string | null }>,
+  ) => {
+    setSaving(true); setSaveError('');
+    const r = await op();
+    if (r.list) setList(r.list); else setSaveError(r.error || SETTING_SAVE_ERROR);
     setSaving(false);
   };
 
@@ -64,31 +78,23 @@ export default function SettingsPage() {
   const addProduct = async () => {
     const trimmed = newProduct.trim();
     if (!trimmed || products.includes(trimmed)) return;
-    const updated = [...products, trimmed];
-    setProducts(updated);
     setNewProduct('');
-    await save('product_categories', updated);
+    await changeList('product_categories', setProducts, () => addToSettingList(supabase, 'product_categories', [trimmed]));
   };
 
   const removeProduct = async (p: string) => {
-    const updated = products.filter(x => x !== p);
-    setProducts(updated);
-    await save('product_categories', updated);
+    await changeList('product_categories', setProducts, () => removeFromSettingList(supabase, 'product_categories', p));
   };
 
   const addLocation = async () => {
     const trimmed = newLocation.trim();
     if (!trimmed || locations.includes(trimmed)) return;
-    const updated = [...locations, trimmed];
-    setLocations(updated);
     setNewLocation('');
-    await save('locations', updated);
+    await changeList('locations', setLocations, () => addToSettingList(supabase, 'locations', [trimmed]));
   };
 
   const removeLocation = async (l: string) => {
-    const updated = locations.filter(x => x !== l);
-    setLocations(updated);
-    await save('locations', updated);
+    await changeList('locations', setLocations, () => removeFromSettingList(supabase, 'locations', l));
   };
 
   const sendTestSummary = async () => {
@@ -305,6 +311,11 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {saveError && (
+        <div className="fixed bottom-6 right-6 bg-red-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm" role="alert">
+          {saveError}
+        </div>
+      )}
       {saving && (
         <div className="fixed bottom-6 right-6 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm">
           <RefreshCw className="w-4 h-4 animate-spin" /><span>กำลังบันทึก...</span>

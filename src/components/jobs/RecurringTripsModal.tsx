@@ -7,6 +7,7 @@ import { COMMISSION_RATE, DEFAULT_LOCATIONS, DEFAULT_PRODUCT_CATEGORIES } from '
 import { createClient } from '@/lib/supabase/client';
 import { mergeSuggestions } from '@/lib/suggestions';
 import ComboInput from '@/components/ui/ComboInput';
+import { addToSettingList } from '@/lib/settingsList';
 
 interface Driver { id: string; name: string; nickname: string; license_plate: string; }
 interface RecurringRoute {
@@ -84,6 +85,18 @@ export default function RecurringTripsModal({ drivers, onClose }: { drivers: Dri
     [knownProducts, routes],
   );
 
+  // เก็บสถานที่/สินค้าที่พิมพ์เองเข้า app_settings (merge ไม่ทับ) ให้ขึ้นในรายการแนะนำทุกหน้าหลังรีหน้า
+  const rememberSuggestions = async (origin: string, destination: string, product: string) => {
+    const [loc, prod] = await Promise.all([
+      addToSettingList(createClient(), 'locations', [origin, destination]),
+      addToSettingList(createClient(), 'product_categories', [product]),
+    ]);
+    if (loc.list) setKnownPlaces(prev => mergeSuggestions(prev, loc.list!));
+    if (prod.list) setKnownProducts(prev => mergeSuggestions(prev, prod.list!));
+    const err = loc.error || prod.error;
+    if (err) setError(`บันทึกแม่แบบแล้ว แต่${err}`);
+  };
+
   const call = async (url: string, method: string, payload?: unknown) => {
     setBusy(true); setError('');
     try {
@@ -135,6 +148,7 @@ export default function RecurringTripsModal({ drivers, onClose }: { drivers: Dri
     const d = drivers.find(x => x.id === use.driver_id);
     setNotice(`เพิ่มเที่ยว ${selected.origin} → ${selected.destination} (${d?.license_plate || ''}) ลงหน้าเที่ยววิ่งแล้ว`);
     setView('list');
+    await rememberSuggestions(selected.origin, selected.destination, selected.product);
   };
 
   const openEdit = (r: RecurringRoute | null) => {
@@ -158,6 +172,7 @@ export default function RecurringTripsModal({ drivers, onClose }: { drivers: Dri
     if (!body) return;
     await load();
     setView('list');
+    await rememberSuggestions(tpl.origin, tpl.destination, tpl.product);
   };
 
   const removeTemplate = async (r: RecurringRoute) => {
