@@ -1,9 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { X, Plus, Check, Edit2, Trash2, Repeat, ChevronRight } from 'lucide-react';
 import { calcCommission, safeNumber } from '@/lib/utils';
-import { COMMISSION_RATE } from '@/lib/constants';
+import { COMMISSION_RATE, DEFAULT_LOCATIONS, DEFAULT_PRODUCT_CATEGORIES } from '@/lib/constants';
+import { createClient } from '@/lib/supabase/client';
+import { mergeSuggestions } from '@/lib/suggestions';
+import ComboInput from '@/components/ui/ComboInput';
 
 interface Driver { id: string; name: string; nickname: string; license_plate: string; }
 interface RecurringRoute {
@@ -28,6 +31,9 @@ export default function RecurringTripsModal({ drivers, onClose }: { drivers: Dri
   const [tpl, setTpl] = useState(emptyTemplate);
   const [use, setUse] = useState({ date: today(), driver_id: '', transport_price: '', trip_pay: '' });
   const [tripPayTouched, setTripPayTouched] = useState(false);
+  // รายการแนะนำที่ดึงจากระบบ (app_settings + jobs/trips เดิม) — ดึงไม่สำเร็จก็ยังใช้ค่ามาตรฐานได้
+  const [knownPlaces, setKnownPlaces] = useState<string[]>([]);
+  const [knownProducts, setKnownProducts] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -42,6 +48,41 @@ export default function RecurringTripsModal({ drivers, onClose }: { drivers: Dri
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = createClient();
+        const [settings, trips, jobs] = await Promise.all([
+          supabase.from('app_settings').select('setting_key,setting_value')
+            .in('setting_key', ['product_categories', 'locations']),
+          supabase.from('trips').select('origin,destination,product').is('deleted_at', null)
+            .order('date', { ascending: false }).limit(1000),
+          supabase.from('jobs').select('origin,destination,product').is('deleted_at', null)
+            .order('created_at', { ascending: false }).limit(1000),
+        ]);
+        if (cancelled) return;
+        const setting = (key: string): string[] => {
+          const v = settings.data?.find(r => r.setting_key === key)?.setting_value;
+          return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+        };
+        const rows = [...(trips.data ?? []), ...(jobs.data ?? [])] as { origin: string | null; destination: string | null; product: string | null }[];
+        setKnownPlaces(mergeSuggestions(setting('locations'), rows.map(r => r.origin), rows.map(r => r.destination)));
+        setKnownProducts(mergeSuggestions(setting('product_categories'), rows.map(r => r.product)));
+      } catch { /* ใช้รายการมาตรฐานต่อไป */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const placeOptions = useMemo(
+    () => mergeSuggestions(DEFAULT_LOCATIONS, knownPlaces, routes.map(r => r.origin), routes.map(r => r.destination)),
+    [knownPlaces, routes],
+  );
+  const productOptions = useMemo(
+    () => mergeSuggestions(DEFAULT_PRODUCT_CATEGORIES, knownProducts, routes.map(r => r.product)),
+    [knownProducts, routes],
+  );
 
   const call = async (url: string, method: string, payload?: unknown) => {
     setBusy(true); setError('');
@@ -209,17 +250,17 @@ export default function RecurringTripsModal({ drivers, onClose }: { drivers: Dri
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label-text" htmlFor="rt_origin">ต้นทาง *</label>
-                  <input id="rt_origin" className="form-input" value={tpl.origin} onChange={e => setTpl(p => ({ ...p, origin: e.target.value }))} />
+                  <ComboInput id="rt_origin" value={tpl.origin} options={placeOptions} onChange={v => setTpl(p => ({ ...p, origin: v }))} placeholder="พิมพ์หรือเลือก" />
                 </div>
                 <div>
                   <label className="label-text" htmlFor="rt_dest">ปลายทาง *</label>
-                  <input id="rt_dest" className="form-input" value={tpl.destination} onChange={e => setTpl(p => ({ ...p, destination: e.target.value }))} />
+                  <ComboInput id="rt_dest" value={tpl.destination} options={placeOptions} onChange={v => setTpl(p => ({ ...p, destination: v }))} placeholder="พิมพ์หรือเลือก" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label-text" htmlFor="rt_product">สินค้า</label>
-                  <input id="rt_product" className="form-input" value={tpl.product} onChange={e => setTpl(p => ({ ...p, product: e.target.value }))} />
+                  <ComboInput id="rt_product" value={tpl.product} options={productOptions} onChange={v => setTpl(p => ({ ...p, product: v }))} placeholder="พิมพ์หรือเลือก" />
                 </div>
                 <div>
                   <label className="label-text" htmlFor="rt_defprice">ค่าขนส่งเริ่มต้น (บาท)</label>
