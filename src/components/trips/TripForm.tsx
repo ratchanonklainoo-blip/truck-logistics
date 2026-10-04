@@ -16,8 +16,8 @@ import { COMMISSION_RATE } from '@/lib/constants';
 const tripSchema = z.object({
   date:            z.string().min(1, 'กรุณาระบุวันที่'),
   driver_id:       z.string().uuid('กรุณาเลือกคนขับ'),
-  origin:          z.string().min(1, 'กรุณาระบุต้นทาง'),
-  destination:     z.string().min(1, 'กรุณาระบุปลายทาง'),
+  origin:          z.string().default(''),
+  destination:     z.string().default(''),
   product:         z.string().default(''),
   weight:          z.string().default(''),
   transport_price: z.coerce.number().min(0).default(0),
@@ -87,8 +87,8 @@ export default function TripForm({
       reset({
         date:            editingTrip.date,
         driver_id:       editingTrip.driver_id,
-        origin:          editingTrip.origin,
-        destination:     editingTrip.destination,
+        origin:          editingTrip.origin === '-' ? '' : editingTrip.origin,
+        destination:     editingTrip.destination === '-' ? '' : editingTrip.destination,
         product:         editingTrip.product,
         weight:          editingTrip.weight,
         transport_price: safeNumber(editingTrip.transport_price),
@@ -193,7 +193,12 @@ export default function TripForm({
   }, [setValue]);
 
   const onSubmit = async (data: TripSchema) => {
-    await onSave(data, editingTrip?.id);
+    const finalData = {
+      ...data,
+      origin:      data.origin.trim()      || '-',
+      destination: data.destination.trim() || '-',
+    };
+    await onSave(finalData, editingTrip?.id);
   };
 
   return (
@@ -369,7 +374,6 @@ export default function TripForm({
                 </div>
               )}
             </div>
-            {errors.origin && <p className="text-red-500 text-xs mt-1">{errors.origin.message}</p>}
           </div>
 
           <div ref={destRef}>
@@ -401,7 +405,6 @@ export default function TripForm({
                 </div>
               )}
             </div>
-            {errors.destination && <p className="text-red-500 text-xs mt-1">{errors.destination.message}</p>}
           </div>
         </div>
 
