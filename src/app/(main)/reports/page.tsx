@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import {
   ChevronLeft, ChevronRight, RefreshCw, Printer, Plus,
-  Edit2, Trash2, Check, X, FileText, BarChart3,
+  Edit2, Trash2, Check, X, FileText, BarChart3, Lock,
 } from 'lucide-react';
 import { formatCurrency, formatNumber, adToBE } from '@/lib/utils';
+import { bangkokToday, fixedExpenseStatusForMonth, type FixedExpenseProgress } from '@/lib/fixedExpenses';
 
 
 // Helper for PDF: "1,234 บาท" format (no ฿ symbol)
@@ -56,6 +57,13 @@ interface FixedExpense {
   due_day: number | null;
   is_active: boolean;
   notes: string | null;
+  frequency?: 'monthly' | 'yearly';
+  pay_month?: number | null;
+  end_date?: string | null;
+  /** งวดที่ตรงกับเดือนที่ดูรายงาน (เฉพาะรายงานรายเดือน) */
+  installment_no?: number | null;
+  /** คำนวณจากปฏิทิน (รายงาน: ณ เดือนที่ดู / รายการประจำ: ณ เดือนปัจจุบัน) */
+  progress?: FixedExpenseProgress;
 }
 
 interface MonthlyTotals {
@@ -122,12 +130,34 @@ interface FEFormData {
   name: string; category: string; truck_license_plate: string;
   amount: string; total_installments: string; paid_installments: string;
   start_date: string; due_day: string; is_active: boolean; notes: string;
+  frequency: 'monthly' | 'yearly'; pay_month: string; end_date: string;
 }
 const EMPTY_FE: FEFormData = {
   name: '', category: 'insurance', truck_license_plate: '', amount: '',
   total_installments: '', paid_installments: '0', start_date: '',
   due_day: '', is_active: true, notes: '',
+  frequency: 'monthly', pay_month: '', end_date: '',
 };
+
+// งวดที่จ่ายแล้ว/คงเหลือ ใช้ค่าที่คำนวณจากปฏิทิน (progress) เป็นหลัก — paid_installments เป็นแค่ค่าสำรอง
+function feInstallment(fe: FixedExpense) {
+  const isInst = fe.total_installments !== null;
+  const paid = fe.progress?.paid ?? fe.paid_installments;
+  const remaining = fe.progress?.remaining ?? fe.remaining_installments;
+  return { isInst, paid, total: fe.total_installments, remaining, done: isInst && remaining === 0 };
+}
+
+function feYearlyLabel(fe: FixedExpense): string {
+  const pm = fe.pay_month || (fe.start_date ? Number(fe.start_date.slice(5, 7)) : 0);
+  return pm ? `รายปี · จ่ายเดือน${THAI_MONTHS[pm - 1]}` : 'รายปี';
+}
+
+// ข้อความงวดสำหรับตารางรายงาน (หน้าจอ + PDF)
+function feInstallmentText(fe: FixedExpense): string {
+  const s = feInstallment(fe);
+  if (s.isInst) return s.done ? `ครบแล้ว (${s.paid}/${s.total})` : `งวด ${s.paid}/${s.total} · เหลือ ${s.remaining}`;
+  return fe.frequency === 'yearly' ? feYearlyLabel(fe) : 'ต่อเนื่อง';
+}
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
@@ -208,6 +238,9 @@ export default function ReportsPage() {
       start_date: fe.start_date || '',
       due_day: fe.due_day !== null ? String(fe.due_day) : '',
       is_active: fe.is_active, notes: fe.notes || '',
+      frequency: fe.frequency === 'yearly' ? 'yearly' : 'monthly',
+      pay_month: fe.pay_month ? String(fe.pay_month) : '',
+      end_date: fe.end_date || '',
     });
     setFeError(''); setShowFEModal(true);
   };
@@ -226,6 +259,9 @@ export default function ReportsPage() {
         start_date: feForm.start_date || null,
         due_day: feForm.due_day ? parseInt(feForm.due_day) : null,
         is_active: feForm.is_active, notes: feForm.notes.trim() || null,
+        frequency: feForm.frequency,
+        pay_month: feForm.frequency === 'yearly' && feForm.pay_month ? parseInt(feForm.pay_month) : null,
+        end_date: feForm.end_date || null,
       };
       const res = await fetch('/api/fixed-expenses', {
         method: editingFE ? 'PUT' : 'POST',
@@ -248,6 +284,23 @@ export default function ReportsPage() {
     loadFixed(); loadReport();
   };
 
+  // ปิดรายการ: ตั้ง is_active=false + end_date — เดือนที่ก่อนหรือเท่ากับเดือนของวันสิ้นสุดยังนับในรายงานเหมือนเดิม
+  const closeFE = async (fe: FixedExpense) => {
+    const input = window.prompt(
+      `ปิดรายการ "${fe.name}"\nระบุวันสิ้นสุด (ปี ค.ศ. รูปแบบ YYYY-MM-DD) — รายงานเดือนที่ผ่านมาก่อนวันนี้จะยังนับเหมือนเดิม`,
+      bangkokToday().date,
+    );
+    if (input === null) return;
+    const end = input.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(end)) { alert('รูปแบบวันที่ไม่ถูกต้อง (ต้องเป็น YYYY-MM-DD)'); return; }
+    const res = await fetch('/api/fixed-expenses', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: fe.id, is_active: false, end_date: end }),
+    });
+    if (!res.ok) { const j = await res.json().catch(() => ({})); alert(j.error || 'ปิดรายการไม่สำเร็จ'); return; }
+    loadFixed(); loadReport();
+  };
+
   const markPaid = async (fe: FixedExpense) => {
     await fetch('/api/fixed-expenses', {
       method: 'PUT',
@@ -258,8 +311,11 @@ export default function ReportsPage() {
   };
 
   const totalAllFixed = (report?.fixed_expenses || [])
-    .filter(fe => fe.is_active)
     .reduce((s, fe) => s + fe.amount, 0);
+
+  // แจ้งเตือนใกล้ผ่อนครบ (เหลือ ≤ 2 งวด หรือ ≤ 60 วัน) — แสดงในหน้าเท่านั้น ไม่ส่งออกนอกระบบ
+  const nearEndList = fixedList.filter(fe => fe.progress?.near_end);
+  const currentYm = bangkokToday().ym;
 
   const printDate = new Date().toLocaleDateString('th-TH', {
     year: 'numeric', month: 'long', day: 'numeric',
@@ -532,16 +588,15 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {report.fixed_expenses.filter(fe => fe.is_active).map((fe) => {
-                    const isInst = fe.total_installments !== null;
-                    const done = isInst && fe.remaining_installments === 0;
+                  {report.fixed_expenses.map((fe) => {
+                    const done = feInstallment(fe).done;
                     return (
                       <tr key={fe.id}>
-                        <td style={{fontWeight:600}}>{fe.name}</td>
+                        <td style={{fontWeight:600}}>{fe.name}{fe.frequency === 'yearly' ? ' (รายปี)' : ''}</td>
                         <td style={{fontSize:'9px',color:'#334155',textAlign:'center'}}>{fe.truck_license_plate || 'บริษัท'}</td>
                         <td style={{fontWeight:600}}>{fmtB(fe.amount)}</td>
                         <td style={{textAlign:'center',fontSize:'9px'}}>
-                          {isInst ? (done ? <span style={{color:'#059669'}}>ครบแล้ว</span> : `เหลือ ${fe.remaining_installments}`) : <span style={{color:'#475569'}}>ต่อเนื่อง</span>}
+                          <span style={{color: done ? '#059669' : '#475569'}}>{feInstallmentText(fe)}</span>
                         </td>
                       </tr>
                     );
@@ -659,6 +714,19 @@ export default function ReportsPage() {
           </button>
         ))}
       </div>
+
+      {nearEndList.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 space-y-1">
+          <div className="font-semibold">⚠ ใกล้ผ่อนครบ ({nearEndList.length} รายการ)</div>
+          {nearEndList.map(fe => (
+            <div key={fe.id} className="text-xs">
+              {fe.name}{fe.truck_license_plate ? ` (${fe.truck_license_plate})` : ''} — เหลือ {fe.progress?.remaining} งวด
+              {fe.progress?.last_date ? `, งวดสุดท้าย ${fe.progress.last_date}` : ''}
+              {fe.progress?.days_to_last !== null && fe.progress?.days_to_last !== undefined && fe.progress.days_to_last >= 0 ? ` (อีก ${fe.progress.days_to_last} วัน)` : ''}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ══════════════════════════════════════════════════════
           TAB: Monthly Summary
@@ -816,12 +884,11 @@ export default function ReportsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {(report.fixed_expenses.filter(fe => fe.is_active)).length === 0 ? (
+                      {report.fixed_expenses.length === 0 ? (
                         <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-400">ไม่มีรายการ</td></tr>
                       ) : (
-                        report.fixed_expenses.filter(fe => fe.is_active).map((fe, i) => {
-                          const isInst = fe.total_installments !== null;
-                          const done = isInst && fe.remaining_installments === 0;
+                        report.fixed_expenses.map((fe, i) => {
+                          const { isInst, done } = feInstallment(fe);
                           return (
                             <tr key={fe.id} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
                               <td className="px-4 py-2.5">
@@ -829,6 +896,9 @@ export default function ReportsPage() {
                                 <span className={`inline-flex mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${CATEGORY_COLORS[fe.category] || 'bg-gray-100 text-gray-700'}`}>
                                   {CATEGORY_LABELS[fe.category] || fe.category}
                                 </span>
+                                {fe.frequency === 'yearly' && (
+                                  <span className="inline-flex mt-0.5 ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700">{feYearlyLabel(fe)}</span>
+                                )}
                               </td>
                               <td className="px-3 py-2.5 text-slate-500 text-xs">{fe.truck_license_plate || 'บริษัท'}</td>
                               <td className="px-4 py-2.5 text-right font-semibold text-slate-800">{formatCurrency(fe.amount)}</td>
@@ -838,9 +908,9 @@ export default function ReportsPage() {
                                     <div className={`font-medium ${done ? 'text-green-600' : 'text-slate-700'}`}>
                                       {done ? 'ครบแล้ว' : `เหลือ ${fe.remaining_installments} งวด`}
                                     </div>
-                                    <div className="text-slate-400">{fe.paid_installments}/{fe.total_installments}</div>
+                                    <div className="text-slate-400">{feInstallment(fe).paid}/{fe.total_installments}</div>
                                   </div>
-                                ) : <span className="text-slate-400">ต่อเนื่อง</span>}
+                                ) : <span className="text-slate-400">{fe.frequency === 'yearly' ? 'ครั้งเดียวต่อปี' : 'ต่อเนื่อง'}</span>}
                               </td>
                             </tr>
                           );
@@ -916,7 +986,7 @@ export default function ReportsPage() {
       {activeTab === 'fixed' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-slate-500">ค่าใช้จ่ายที่ต้องจ่ายทุกเดือน — ประกัน, ค่างวด, ภาษี</p>
+            <p className="text-sm text-slate-500">ค่าใช้จ่ายประจำ (รายเดือน/รายปี) — ประกัน, ค่างวด, ภาษี</p>
             <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
               <Plus className="w-4 h-4" />เพิ่มรายการ
             </button>
@@ -935,7 +1005,7 @@ export default function ReportsPage() {
                       <th className="text-left px-4 py-3 font-semibold text-slate-600">รายการ</th>
                       <th className="text-left px-4 py-3 font-semibold text-slate-600">หมวด</th>
                       <th className="text-left px-4 py-3 font-semibold text-slate-600">รถ</th>
-                      <th className="text-right px-4 py-3 font-semibold text-slate-600">จำนวน/เดือน</th>
+                      <th className="text-right px-4 py-3 font-semibold text-slate-600">จำนวน/ครั้ง</th>
                       <th className="text-center px-4 py-3 font-semibold text-slate-600">สถานะงวด</th>
                       <th className="text-center px-4 py-3 font-semibold text-slate-600">ใช้งาน</th>
                       <th className="px-4 py-3 w-28"></th>
@@ -943,13 +1013,13 @@ export default function ReportsPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {fixedList.map((fe, i) => {
-                      const isInst = fe.total_installments !== null;
-                      const remaining = fe.remaining_installments;
-                      const done = isInst && remaining === 0;
+                      const { isInst, paid, remaining, done } = feInstallment(fe);
                       return (
                         <tr key={fe.id} className={`hover:bg-slate-50 ${!fe.is_active ? 'opacity-50' : ''} ${i % 2 === 0 ? '' : 'bg-slate-50/30'}`}>
                           <td className="px-4 py-3">
                             <div className="font-medium text-slate-800">{fe.name}</div>
+                            {fe.frequency === 'yearly' && <span className="inline-flex mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700">{feYearlyLabel(fe)}</span>}
+                            {fe.end_date && <div className="text-xs text-slate-400 mt-0.5">สิ้นสุด {fe.end_date}</div>}
                             {fe.notes && <div className="text-xs text-slate-400 mt-0.5">{fe.notes}</div>}
                           </td>
                           <td className="px-4 py-3">
@@ -962,28 +1032,31 @@ export default function ReportsPage() {
                           <td className="px-4 py-3 text-center">
                             {isInst ? (
                               <div className="flex flex-col items-center gap-1">
-                                <span className={`text-xs font-semibold ${done ? 'text-green-600' : remaining === 1 ? 'text-orange-500' : 'text-slate-700'}`}>
-                                  {done ? 'ชำระครบ' : `เหลือ ${remaining} งวด`}
+                                <span className={`text-xs font-semibold ${done ? 'text-green-600' : fe.progress?.near_end ? 'text-orange-500' : 'text-slate-700'}`}>
+                                  {done ? 'ครบแล้ว' : `เหลือ ${remaining} งวด`}{fe.progress?.near_end ? ' · ใกล้ครบ' : ''}
                                 </span>
                                 <div className="w-24 h-1.5 bg-slate-200 rounded-full overflow-hidden">
                                   <div className={`h-full rounded-full ${done ? 'bg-green-500' : 'bg-blue-500'}`}
-                                    style={{ width: `${Math.min(100, (fe.paid_installments / (fe.total_installments || 1)) * 100)}%` }} />
+                                    style={{ width: `${Math.min(100, ((paid ?? 0) / (fe.total_installments || 1)) * 100)}%` }} />
                                 </div>
-                                <span className="text-[11px] text-slate-400">{fe.paid_installments}/{fe.total_installments} งวด</span>
+                                <span className="text-[11px] text-slate-400">{paid}/{fe.total_installments} งวด</span>
                               </div>
-                            ) : <span className="text-slate-400 text-xs">ต่อเนื่อง</span>}
+                            ) : <span className="text-slate-400 text-xs">{fe.frequency === 'yearly' ? 'ครั้งเดียวต่อปี' : 'ต่อเนื่อง'}</span>}
                           </td>
                           <td className="px-4 py-3 text-center">
                             <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${fe.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                              {fe.is_active ? 'ใช้งาน' : 'ปิด'}
+                              {fe.is_active ? 'ใช้งาน' : 'ปิดแล้ว'}
                             </span>
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1 justify-end">
-                              {isInst && !done && (
+                              {isInst && !done && fe.is_active && !fe.start_date && (
                                 <button onClick={() => markPaid(fe)} title="บันทึกชำระงวด" className="p-1.5 rounded-lg text-green-600 hover:bg-green-50">
                                   <Check className="w-4 h-4" />
                                 </button>
+                              )}
+                              {fe.is_active && (
+                                <button onClick={() => closeFE(fe)} title="ปิดรายการ (ตั้งวันสิ้นสุด)" className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50"><Lock className="w-4 h-4" /></button>
                               )}
                               <button onClick={() => openEdit(fe)} className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100"><Edit2 className="w-4 h-4" /></button>
                               <button onClick={() => deleteFE(fe.id)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>
@@ -995,9 +1068,9 @@ export default function ReportsPage() {
                   </tbody>
                   <tfoot>
                     <tr className="bg-purple-50 border-t-2 border-purple-200">
-                      <td colSpan={3} className="px-4 py-3 font-semibold text-purple-800">รวมค่าใช้จ่ายประจำ (รายการที่ใช้งานอยู่)</td>
+                      <td colSpan={3} className="px-4 py-3 font-semibold text-purple-800">รวมค่าใช้จ่ายประจำที่ต้องจ่ายเดือนนี้ (ตามปฏิทิน)</td>
                       <td className="px-4 py-3 text-right font-bold text-purple-800 text-base">
-                        {formatCurrency(fixedList.filter(f => f.is_active).reduce((s, f) => s + f.amount, 0))}
+                        {formatCurrency(fixedList.filter(f => fixedExpenseStatusForMonth(f, currentYm).active).reduce((s, f) => s + f.amount, 0))}
                       </td>
                       <td colSpan={3} />
                     </tr>
@@ -1050,7 +1123,7 @@ export default function ReportsPage() {
                   <p className="text-[11px] text-slate-400 mt-1">เลือกรถที่ค่าใช้จ่ายนี้ผูกด้วย หากเป็นค่าใช้จ่ายของบริษัทให้เว้นว่าง</p>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">จำนวนเงิน/เดือน (บาท) *</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">{feForm.frequency === 'yearly' ? 'จำนวนเงินต่อปี (บาท) *' : 'จำนวนเงิน/เดือน (บาท) *'}</label>
                   <input type="number" value={feForm.amount} onChange={e => setFeForm(p => ({ ...p, amount: e.target.value }))}
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0" />
                 </div>
@@ -1059,8 +1132,27 @@ export default function ReportsPage() {
                   <input type="number" min="1" max="31" value={feForm.due_day} onChange={e => setFeForm(p => ({ ...p, due_day: e.target.value }))}
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="เช่น 5" />
                 </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">ความถี่ในการจ่าย</label>
+                  <select value={feForm.frequency} onChange={e => setFeForm(p => ({ ...p, frequency: e.target.value as 'monthly' | 'yearly', pay_month: e.target.value === 'yearly' ? p.pay_month : '' }))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                    <option value="monthly">ทุกเดือน</option>
+                    <option value="yearly">รายปี (จ่ายครั้งเดียวต่อปี)</option>
+                  </select>
+                </div>
+                {feForm.frequency === 'yearly' ? (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">เดือนที่จ่าย</label>
+                    <select value={feForm.pay_month} onChange={e => setFeForm(p => ({ ...p, pay_month: e.target.value }))}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                      <option value="">ตามเดือนของวันเริ่ม</option>
+                      {THAI_MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                    </select>
+                    <p className="text-[11px] text-slate-400 mt-1">นับเต็มจำนวนเฉพาะเดือนนี้ของทุกปี (ต้องระบุเดือนหรือวันเริ่ม)</p>
+                  </div>
+                ) : <div />}
                 <div className="col-span-2 border-t border-slate-100 pt-3">
-                  <p className="text-xs font-semibold text-slate-500 mb-3">ข้อมูลผ่อนชำระ (ถ้าเป็นค่างวด)</p>
+                  <p className="text-xs font-semibold text-slate-500 mb-3">ข้อมูลผ่อนชำระ (ถ้าเป็นค่างวด) — {feForm.frequency === 'yearly' ? '1 งวด = 1 ปี' : '1 งวด = 1 เดือน'}</p>
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-slate-600 mb-1">จำนวนงวดทั้งหมด</label>
@@ -1080,13 +1172,19 @@ export default function ReportsPage() {
                   </div>
                 </div>
                 <div className="col-span-2">
+                  <label className="block text-xs font-medium text-slate-600 mb-1">วันสิ้นสุด (ถ้ามี)</label>
+                  <input type="date" value={feForm.end_date} onChange={e => setFeForm(p => ({ ...p, end_date: e.target.value }))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <p className="text-[11px] text-slate-400 mt-1">เดือนที่เลยวันสิ้นสุดจะไม่นับ ส่วนเดือนก่อนหน้ายังนับเหมือนเดิม (ใช้ปุ่มกุญแจในตารางเพื่อปิดรายการเร็ว ๆ)</p>
+                </div>
+                <div className="col-span-2">
                   <label className="block text-xs font-medium text-slate-600 mb-1">หมายเหตุ</label>
                   <input value={feForm.notes} onChange={e => setFeForm(p => ({ ...p, notes: e.target.value }))}
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="หมายเหตุเพิ่มเติม" />
                 </div>
                 <div className="col-span-2 flex items-center gap-2">
                   <input type="checkbox" id="fe-active" checked={feForm.is_active} onChange={e => setFeForm(p => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4 text-blue-600 rounded" />
-                  <label htmlFor="fe-active" className="text-sm text-slate-700">ใช้งานอยู่ (นับรวมในรายงาน)</label>
+                  <label htmlFor="fe-active" className="text-sm text-slate-700">ใช้งานอยู่ (ถ้าปิดและไม่มีวันสิ้นสุด จะไม่นับรวมในรายงานทุกเดือน)</label>
                 </div>
               </div>
             </div>

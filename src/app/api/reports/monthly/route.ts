@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { isFixedExpenseCounted } from '@/lib/fixedExpenses';
+import { bangkokToday, fixedExpenseProgress, fixedExpenseStatusForMonth } from '@/lib/fixedExpenses';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,11 +42,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   if (tripsErr) return NextResponse.json({ error: tripsErr.message }, { status: 500 });
 
-  // 2. Fixed expenses (active)
+  // 2. Fixed expenses — ดึงทั้งที่ปิดรายการแล้วด้วย เพราะเดือนเก่าก่อน end_date ยังต้องนับ
+  //    (ตัดสินว่านับเดือนนี้หรือไม่ด้วย fixedExpenseStatusForMonth)
   const { data: fixedExpenses } = await supabase
     .from('fixed_expenses')
     .select('*')
-    .eq('is_active', true)
     .is('deleted_at', null);
 
   // 3. Expenses table — additional expenses in the month
@@ -142,13 +142,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   // 6. Enrich fixed expenses
-  // นับเฉพาะรายการที่เริ่มแล้วและยังไม่ผ่อนครบ ณ เดือนที่ขอ (ค่างวดที่ครบแล้วไม่นับซ้ำ)
-  const enrichedFixed = (fixedExpenses || []).filter(fe => isFixedExpenseCounted(fe, month_year)).map(fe => ({
-    ...fe,
-    remaining_installments: fe.total_installments !== null
-      ? Math.max(0, fe.total_installments - fe.paid_installments)
-      : null,
-  }));
+  // นับเฉพาะรายการที่มีผลในเดือนที่ขอ: เริ่มแล้ว ยังไม่ผ่อนครบ ยังไม่เลยวันสิ้นสุด และรายปีนับเฉพาะเดือนที่จ่าย
+  // งวดคงเหลือ/จ่ายแล้วคำนวณจากปฏิทิน ณ เดือนที่ขอ (ตรรกะเดียวกับหน้ารายการค่าใช้จ่ายประจำ)
+  const today = bangkokToday();
+  const enrichedFixed = (fixedExpenses || []).flatMap(fe => {
+    const status = fixedExpenseStatusForMonth(fe, month_year);
+    if (!status.active) return [];
+    const progress = fixedExpenseProgress(fe, month_year, today.date);
+    return [{ ...fe, installment_no: status.installment_no, remaining_installments: progress.remaining, progress }];
+  });
 
   // 7. Finalise per-driver + assign truck fixed costs (deduplicate shared plates)
   const rawSummaries = Object.values(summaryMap).map(s => {
@@ -175,7 +177,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       continue;
     }
     const truckFixed = enrichedFixed.filter(
-      fe => fe.is_active && normalizePlate(fe.truck_license_plate) === norm
+      fe => normalizePlate(fe.truck_license_plate) === norm
     );
     s.truck_fixed_cost = Math.round(truckFixed.reduce((acc, fe) => acc + fe.amount, 0) * 100) / 100;
     s.net_profit_after_fixed = Math.round((s.net_profit - s.truck_fixed_cost) * 100) / 100;
