@@ -7,10 +7,11 @@ import {
   ClipboardList, Plus, RefreshCw, Filter, ChevronRight,
   Truck, User, Building2, Package, Banknote, X, Check,
   Clock, Search, Edit2, Trash2, Calendar,
-  Sparkles, FileText,
+  Sparkles, FileText, Repeat,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import CoordPasteInput from '@/components/ui/CoordPasteInput';
+import RecurringTripsModal from '@/components/jobs/RecurringTripsModal';
 
 interface Driver { id: string; name: string; nickname: string; license_plate: string; }
 interface Customer { id: string; name: string; payment_type: string; }
@@ -69,6 +70,7 @@ export default function JobsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showAssign, setShowAssign] = useState<Job | null>(null);
   const [showEdit, setShowEdit] = useState<Job | null>(null);
+  const [showRecurring, setShowRecurring] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -174,6 +176,9 @@ export default function JobsPage() {
         </div>
         <div className="flex gap-2">
           <button onClick={loadData} className="btn-secondary text-sm"><RefreshCw className="w-4 h-4" /></button>
+          <button onClick={() => setShowRecurring(true)} className="btn-secondary text-sm">
+            <Repeat className="w-4 h-4" /> เที่ยววิ่งประจำ
+          </button>
           <button onClick={() => setShowCreate(true)} className="btn-primary text-sm">
             <Plus className="w-4 h-4" /> เพิ่มงาน
           </button>
@@ -398,6 +403,9 @@ export default function JobsPage() {
           onClose={() => setShowEdit(null)}
           onSaved={() => { setShowEdit(null); loadData(); }}
         />
+      )}
+      {showRecurring && (
+        <RecurringTripsModal drivers={drivers} onClose={() => setShowRecurring(false)} />
       )}
       {showAssign && (
         <AssignDriverModal
