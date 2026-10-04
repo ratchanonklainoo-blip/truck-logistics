@@ -88,7 +88,9 @@ function PayslipContent() {
     const load = async () => {
       const [{ data: driverData }, { data: tripData }] = await Promise.all([
         supabase.from('drivers').select('*').is('deleted_at', null).eq('is_active', true),
-        supabase.from('trips').select('*').is('deleted_at', null),
+        supabase.from('trips').select('*').is('deleted_at', null)
+          .order('date', { ascending: true })
+          .order('created_at', { ascending: true }),
       ]);
       if (driverData?.length) {
         setDrivers(driverData);
@@ -114,7 +116,7 @@ function PayslipContent() {
     if (!selectedDriver) return [];
     return allTrips
       .filter(t => t.driver_id === selectedDriver.id && isDateInFilter(t.date, monthFilter))
-      .sort((a, b) => a.date.localeCompare(b.date));
+      .sort((a, b) => a.date.localeCompare(b.date) || a.created_at.localeCompare(b.created_at));
   }, [allTrips, selectedDriver, monthFilter]);
 
   // Only trips with product or withdraw (billable)
