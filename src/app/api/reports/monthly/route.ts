@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { isFixedExpenseCounted } from '@/lib/fixedExpenses';
 
 export const dynamic = 'force-dynamic';
 
@@ -140,7 +141,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   // 6. Enrich fixed expenses
-  const enrichedFixed = (fixedExpenses || []).map(fe => ({
+  // นับเฉพาะรายการที่เริ่มแล้วและยังไม่ผ่อนครบ ณ เดือนที่ขอ (ค่างวดที่ครบแล้วไม่นับซ้ำ)
+  const enrichedFixed = (fixedExpenses || []).filter(fe => isFixedExpenseCounted(fe, month_year)).map(fe => ({
     ...fe,
     remaining_installments: fe.total_installments !== null
       ? Math.max(0, fe.total_installments - fe.paid_installments)
