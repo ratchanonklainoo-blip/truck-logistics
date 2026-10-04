@@ -34,7 +34,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     .select(`
       driver_id, transport_price, trip_pay, fuel_cost, fuel_litres,
       distance, other_cost, withdraw,
-      drivers!trips_driver_id_fkey(id, name, nickname, license_plate, base_salary, social_security)
+      drivers!trips_driver_id_fkey(id, name, nickname, license_plate, base_salary, social_security, is_active, deleted_at)
     `)
     .gte('date', dateFrom)
     .lte('date', dateTo)
@@ -96,7 +96,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   for (const t of (trips || [])) {
     const dr = (t as any).drivers;
-    if (!dr) continue;
+    // ตัดเที่ยวของคนขับที่ถูกลบ/ปิดใช้งาน ออกจากรายงาน (ไม่แตะข้อมูลเที่ยวใน DB)
+    if (!dr || dr.deleted_at || dr.is_active === false) continue;
     const did = t.driver_id;
     if (!summaryMap[did]) {
       summaryMap[did] = {

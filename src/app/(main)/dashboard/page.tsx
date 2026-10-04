@@ -70,7 +70,9 @@ export default function DashboardPage() {
         supabase.from('advance_requests').select('id').eq('status', 'pending').is('deleted_at', null),
       ]);
       setDrivers(dr || []);
-      setAllTrips(tr || []);
+      // นับเฉพาะเที่ยวของคนขับที่ยังใช้งาน ให้ตรงกับรายงานรายเดือน (เที่ยวคนขับที่ลบแล้วยังอยู่ใน DB แต่ไม่นับ)
+      const activeIds = new Set((dr || []).map(d => d.id));
+      setAllTrips((tr || []).filter(t => activeIds.has(t.driver_id)));
       const today = new Date().toISOString().slice(0, 10);
       const closedToday = (jobs || []).filter(j => j.status === 'closed' && j.date === today);
       setJobStats({
@@ -170,6 +172,7 @@ export default function DashboardPage() {
   const [reportYear,    setReportYear]    = useState(new Date().getFullYear());
   const [reportTrips,   setReportTrips]   = useState<Trip[]>([]);
   const [reportLoading, setReportLoading] = useState(false);
+  const activeDriverIds = useMemo(() => new Set(drivers.map(d => d.id)), [drivers]);
 
   useEffect(() => {
     if (activeTab !== 'reports') return;
@@ -178,11 +181,11 @@ export default function DashboardPage() {
       const { data } = await supabase
         .from('trips').select('*').is('deleted_at', null)
         .gte('date', `${reportYear}-01-01`).lte('date', `${reportYear}-12-31`);
-      setReportTrips(data || []);
+      setReportTrips((data || []).filter(t => activeDriverIds.has(t.driver_id)));
       setReportLoading(false);
     };
     load();
-  }, [activeTab, reportYear]);
+  }, [activeTab, reportYear, activeDriverIds]);
 
   const THAI_MONTHS_SHORT = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
   const PIE_COLORS = ['#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#6B7280'];
