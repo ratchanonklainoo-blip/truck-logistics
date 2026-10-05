@@ -1,19 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { isRealTrip } from '@/lib/tripCount';
-import { bangkokToday, fixedExpenseProgress, fixedExpenseStatusForMonth } from '@/lib/fixedExpenses';
+import { bangkokToday } from '@/lib/fixedExpenses';
+import { buildMonthlyReport, type ReportTrip } from '@/lib/monthlyReport';
 
 export const dynamic = 'force-dynamic';
-
-function normalizePlate(plate: string | null | undefined): string {
-  if (!plate) return '';
-  return plate
-    .replace(/[฀-๿]+/g, '')
-    .replace(/[/\s]+/g, '-')
-    .replace(/-{2,}/g, '-')
-    .replace(/^-|-$/g, '')
-    .trim();
-}
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const supabase = await createClient();
@@ -34,8 +24,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     .from('trips')
     .select(`
       driver_id, origin, destination, transport_price, trip_pay, fuel_cost, fuel_litres,
-      distance, other_cost, withdraw,
-      drivers!trips_driver_id_fkey(id, name, nickname, license_plate, base_salary, social_security, is_active, deleted_at)
+      distance, other_cost, withdraw, plate,
+      drivers!trips_driver_id_fkey(id, name, nickname, license_plate, base_salary, social_security, is_active, deleted_at, start_date, end_date)
     `)
     .gte('date', dateFrom)
     .lte('date', dateTo)
@@ -58,174 +48,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     .lte('date', dateTo)
     .is('deleted_at', null);
 
-  // Build driver→expenses map
-  const driverExpensesMap: Record<string, number> = {};
-  for (const e of (expensesData || [])) {
-    if (e.driver_id) {
-      driverExpensesMap[e.driver_id] = (driverExpensesMap[e.driver_id] || 0) + (e.amount || 0);
-    }
-  }
-  const totalExtraExpenses = (expensesData || []).reduce((s, e) => s + (e.amount || 0), 0);
-
-  // 4. Type definition
-  type DriverSummary = {
-    driver_id: string;
-    driver_name: string;
-    driver_nickname: string;
-    truck_license_plate: string;
-    base_salary: number;
-    social_security: number;
-    trip_count: number;
-    total_revenue: number;
-    total_fuel_cost: number;
-    total_fuel_litres: number;
-    total_distance: number;
-    total_other_cost: number;
-    total_extra_expenses: number;
-    total_withdraw: number;
-    total_commission: number;
-    gross_driver_cost: number;
-    net_profit: number;
-    fuel_efficiency: number;
-    avg_fuel_price_per_litre: number;
-    truck_fixed_cost: number;
-    net_profit_after_fixed: number;
-  };
-
-  // 5. Aggregate per driver
-  const summaryMap: Record<string, DriverSummary> = {};
-  const rowCounts: Record<string, number> = {}; // จำนวนแถวทั้งหมด ใช้จัดลำดับแจกค่าประจำรถ (คงลำดับเดิม ไม่ให้เงินเปลี่ยน)
-
-  for (const t of (trips || [])) {
-    const dr = (t as any).drivers;
-    // ตัดเที่ยวของคนขับที่ถูกลบ/ปิดใช้งาน ออกจากรายงาน (ไม่แตะข้อมูลเที่ยวใน DB)
-    if (!dr || dr.deleted_at || dr.is_active === false) continue;
-    const did = t.driver_id;
-    if (!summaryMap[did]) {
-      summaryMap[did] = {
-        driver_id: did,
-        driver_name: dr.name,
-        driver_nickname: dr.nickname,
-        truck_license_plate: dr.license_plate || '',
-        base_salary: dr.base_salary || 0,
-        social_security: dr.social_security || 0,
-        trip_count: 0,
-        total_revenue: 0,
-        total_fuel_cost: 0,
-        total_fuel_litres: 0,
-        total_distance: 0,
-        total_other_cost: 0,
-        total_extra_expenses: 0,
-        total_withdraw: 0,
-        total_commission: 0,
-        gross_driver_cost: 0,
-        net_profit: 0,
-        fuel_efficiency: 0,
-        avg_fuel_price_per_litre: 0,
-        truck_fixed_cost: 0,
-        net_profit_after_fixed: 0,
-      };
-    }
-    const s = summaryMap[did];
-    s.trip_count += isRealTrip(t as any) ? 1 : 0; // แถว '-'→'-' ไม่นับเป็นเที่ยว แต่เงินด้านล่างนับตามเดิม
-    rowCounts[did] = (rowCounts[did] || 0) + 1;
-    s.total_revenue += t.transport_price || 0;
-    s.total_fuel_cost += t.fuel_cost || 0;
-    s.total_fuel_litres += t.fuel_litres || 0;
-    s.total_distance += t.distance || 0;
-    s.total_other_cost += t.other_cost || 0;
-    s.total_withdraw += t.withdraw || 0;
-    const commission = (t.trip_pay != null) ? t.trip_pay : (t.transport_price || 0) * 0.10;
-    s.total_commission += commission;
-  }
-
-  // Attach extra expenses per driver
-  for (const did of Object.keys(summaryMap)) {
-    summaryMap[did].total_extra_expenses = Math.round((driverExpensesMap[did] || 0) * 100) / 100;
-  }
-
-  // 6. Enrich fixed expenses
-  // นับเฉพาะรายการที่มีผลในเดือนที่ขอ: เริ่มแล้ว ยังไม่ผ่อนครบ ยังไม่เลยวันสิ้นสุด และรายปีนับเฉพาะเดือนที่จ่าย
-  // งวดคงเหลือ/จ่ายแล้วคำนวณจากปฏิทิน ณ เดือนที่ขอ (ตรรกะเดียวกับหน้ารายการค่าใช้จ่ายประจำ)
-  const today = bangkokToday();
-  const enrichedFixed = (fixedExpenses || []).flatMap(fe => {
-    const status = fixedExpenseStatusForMonth(fe, month_year);
-    if (!status.active) return [];
-    const progress = fixedExpenseProgress(fe, month_year, today.date);
-    return [{ ...fe, installment_no: status.installment_no, remaining_installments: progress.remaining, progress }];
+  const data = buildMonthlyReport({
+    month_year, dateFrom, dateTo, todayDate: bangkokToday().date,
+    trips: (trips || []) as unknown as ReportTrip[],
+    fixedExpenses: (fixedExpenses || []) as never,
+    expenses: expensesData || [],
   });
-
-  // 7. Finalise per-driver + assign truck fixed costs (deduplicate shared plates)
-  const rawSummaries = Object.values(summaryMap).map(s => {
-    s.total_commission = Math.round(s.total_commission * 100) / 100;
-    s.gross_driver_cost = Math.round((s.base_salary + s.total_commission) * 100) / 100;
-    s.net_profit = Math.round(
-      (s.total_revenue - s.total_fuel_cost - s.total_other_cost - s.total_extra_expenses - s.gross_driver_cost) * 100
-    ) / 100;
-    s.fuel_efficiency = s.total_fuel_litres > 0
-      ? Math.round((s.total_distance / s.total_fuel_litres) * 100) / 100 : 0;
-    s.avg_fuel_price_per_litre = s.total_fuel_litres > 0
-      ? Math.round((s.total_fuel_cost / s.total_fuel_litres) * 100) / 100 : 0;
-    return s;
-  });
-
-  const assignedPlates = new Set<string>();
-  const sortedForAssign = [...rawSummaries].sort((a, b) => (rowCounts[b.driver_id] || 0) - (rowCounts[a.driver_id] || 0));
-
-  for (const s of sortedForAssign) {
-    const norm = normalizePlate(s.truck_license_plate);
-    if (!norm || assignedPlates.has(norm)) {
-      s.truck_fixed_cost = 0;
-      s.net_profit_after_fixed = s.net_profit;
-      continue;
-    }
-    const truckFixed = enrichedFixed.filter(
-      fe => normalizePlate(fe.truck_license_plate) === norm
-    );
-    s.truck_fixed_cost = Math.round(truckFixed.reduce((acc, fe) => acc + fe.amount, 0) * 100) / 100;
-    s.net_profit_after_fixed = Math.round((s.net_profit - s.truck_fixed_cost) * 100) / 100;
-    if (s.truck_fixed_cost > 0) assignedPlates.add(norm);
-  }
-
-  const driverSummaries: DriverSummary[] = rawSummaries;
-
-  // 8. Company-wide totals
-  const totals = driverSummaries.reduce(
-    (acc, s) => ({
-      total_revenue:     acc.total_revenue     + s.total_revenue,
-      total_fuel_cost:   acc.total_fuel_cost   + s.total_fuel_cost,
-      total_other_cost:  acc.total_other_cost  + s.total_other_cost,
-      total_extra_expenses: acc.total_extra_expenses + s.total_extra_expenses,
-      total_driver_cost: acc.total_driver_cost + s.gross_driver_cost,
-      net_profit:        acc.net_profit         + s.net_profit,
-      trip_count:        acc.trip_count         + s.trip_count,
-      total_distance:    acc.total_distance     + s.total_distance,
-      total_fuel_litres: acc.total_fuel_litres  + s.total_fuel_litres,
-    }),
-    {
-      total_revenue: 0, total_fuel_cost: 0, total_other_cost: 0,
-      total_extra_expenses: 0, total_driver_cost: 0, net_profit: 0,
-      trip_count: 0, total_distance: 0, total_fuel_litres: 0,
-    }
-  );
-
-  const fixedTotal = enrichedFixed.reduce((s, fe) => s + fe.amount, 0);
-  const avgFuelPrice = totals.total_fuel_litres > 0
-    ? Math.round((totals.total_fuel_cost / totals.total_fuel_litres) * 100) / 100 : 0;
-
-  return NextResponse.json({
-    data: {
-      month_year,
-      date_from: dateFrom,
-      date_to: dateTo,
-      driver_summaries: driverSummaries,
-      fixed_expenses: enrichedFixed,
-      totals: {
-        ...totals,
-        total_fixed_expenses: fixedTotal,
-        net_after_fixed: Math.round((totals.net_profit - fixedTotal) * 100) / 100,
-        avg_fuel_price_per_litre: avgFuelPrice,
-      },
-    },
-  });
+  return NextResponse.json({ data });
 }
