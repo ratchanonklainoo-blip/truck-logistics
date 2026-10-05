@@ -47,20 +47,33 @@ export default function JobsNearbyPage() {
   const [radiusKm, setRadiusKm] = useState(0);
   const [sortBy, setSortBy] = useState<'value' | 'distance'>('value');
   const [editingLocFor, setEditingLocFor] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState('');
 
   const load = useCallback(async () => {
-    const [{ data: drData }, { data: locData }, { data: jobData }] = await Promise.all([
+    setLoadError('');
+    const [{ data: drData, error: drErr }, { data: jobData, error: jobErr }] = await Promise.all([
       supabase.from('drivers').select('id,nickname,name,license_plate')
         .eq('is_active', true).is('deleted_at', null).order('nickname'),
-      supabase.from('truck_locations').select('driver_id,lat,lng,recorded_at')
-        .order('recorded_at', { ascending: false }),
       supabase.from('jobs').select('id,job_number,origin,destination,origin_lat,origin_lng,destination_lat,destination_lng,product,weight_kg,selling_price,status')
         .in('status', ['new', 'waiting_driver']).is('assigned_driver_id', null).is('deleted_at', null),
     ]);
 
+    // ตำแหน่งล่าสุดคันละ 1 แถว (เดิมดึงประวัติตำแหน่งทั้งหมดแล้วเลือกเอง)
+    const locResults = await Promise.all((drData || []).map(d =>
+      supabase.from('truck_locations').select('driver_id,lat,lng,recorded_at')
+        .eq('driver_id', d.id).order('recorded_at', { ascending: false }).limit(1).maybeSingle()));
+    const locErr = locResults.find(r => r.error)?.error;
+
+    const firstErr = drErr || jobErr || locErr;
+    if (firstErr) {
+      setLoadError(`โหลดข้อมูลไม่สำเร็จ (${firstErr.message}) — ตรวจอินเทอร์เน็ตแล้วกด "รีเฟรช" อีกครั้ง`);
+      setLoading(false);
+      return;
+    }
+
     const locMap: Record<string, TruckLoc> = {};
-    (locData || []).forEach(l => {
-      if (!locMap[l.driver_id]) locMap[l.driver_id] = { lat: l.lat, lng: l.lng, recorded_at: l.recorded_at };
+    locResults.forEach(({ data: l }) => {
+      if (l) locMap[l.driver_id] = { lat: l.lat, lng: l.lng, recorded_at: l.recorded_at };
     });
 
     const allJobs = jobData || [];
@@ -127,6 +140,7 @@ export default function JobsNearbyPage() {
             <h1 className="text-2xl font-bold text-slate-800">งานใกล้รถ</h1>
             <p className="text-sm text-slate-500">
               จับคู่งานที่ยังไม่จัดรถกับตำแหน่งรถแต่ละคัน เรียงตามความคุ้มค่า (บาท/กม.)
+              {' · '}ระยะทางเป็นระยะเส้นตรงโดยประมาณ (≈) ระยะถนนจริงมักไกลกว่า
             </p>
           </div>
         </div>
@@ -152,7 +166,14 @@ export default function JobsNearbyPage() {
         </div>
       </div>
 
-      {jobsMissingCoords > 0 && (
+      {loadError && (
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5 rounded-xl">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          {loadError}
+        </div>
+      )}
+
+      {!loadError && jobsMissingCoords > 0 && (
         <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 text-sm px-4 py-2.5 rounded-xl">
           <AlertTriangle className="w-4 h-4 flex-shrink-0" />
           มีงานที่ยังไม่จัดรถอีก {jobsMissingCoords} งานที่ยังไม่ได้กรอกพิกัดต้นทาง — จะไม่แสดงในหน้านี้จนกว่าจะกรอกพิกัดที่หน้า &quot;งานเข้า&quot;
@@ -161,7 +182,7 @@ export default function JobsNearbyPage() {
 
       {/* Per-driver cards */}
       <div className="space-y-4">
-        {drivers.length === 0 ? (
+        {loadError ? null : drivers.length === 0 ? (
           <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-400">
             ยังไม่มีคนขับในระบบ
           </div>
@@ -242,15 +263,15 @@ export default function JobsNearbyPage() {
                             {formatCurrency(c.job.selling_price)}
                           </div>
                           <div className="text-xs text-slate-400">
-                            ไปรับ {formatNumber(c.pickupKm, 1)} กม.
-                            {c.legKm !== null ? ` · วิ่งงาน ${formatNumber(c.legKm, 1)} กม.` : ' · ไม่มีพิกัดปลายทาง'}
+                            ไปรับ ≈{formatNumber(c.pickupKm, 1)} กม.
+                            {c.legKm !== null ? ` · วิ่งงาน ≈${formatNumber(c.legKm, 1)} กม.` : ' · ไม่มีพิกัดปลายทาง'}
                           </div>
                         </div>
                         <div className="text-right min-w-[90px]">
                           <div className={`text-base font-bold ${isBest ? 'text-green-600' : 'text-slate-700'}`}>
                             {c.bahtPerKm !== null ? `${formatNumber(c.bahtPerKm, 1)}` : '—'}
                           </div>
-                          <div className="text-xs text-slate-400">บาท/กม.</div>
+                          <div className="text-xs text-slate-400">บาท/กม. (เส้นตรง)</div>
                         </div>
                       </div>
                     );
