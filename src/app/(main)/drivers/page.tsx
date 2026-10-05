@@ -35,6 +35,28 @@ const EMPTY_FORM = {
   line_user_id: '', phone: '',
 };
 
+// สร้างรหัสคนขับ DR001, DR002, ... ตัวถัดไปที่ยังไม่มีใครใช้ (เทียบแบบไม่สนตัวพิมพ์เล็ก/ใหญ่ รวมคนขับที่ถูกลบ เพราะ UNIQUE ครอบทุกแถว)
+function generateDriverKey(existingKeys: string[]): string {
+  const used = new Set(existingKeys.map(k => (k || '').trim().toLowerCase()));
+  let n = 1;
+  while (used.has(`dr${String(n).padStart(3, '0')}`)) n++;
+  return `DR${String(n).padStart(3, '0')}`;
+}
+
+// แปลง error จาก Supabase เป็นข้อความไทย
+function friendlyDriverError(err: { message?: string; code?: string }): string {
+  const msg = err.message || '';
+  if (err.code === '23505' || /duplicate key/i.test(msg)) {
+    return /driver_key/.test(msg)
+      ? 'รหัสคนขับนี้ถูกใช้แล้ว (รวมคนขับที่เคยลบไปแล้ว) กรุณาใช้รหัสอื่น หรือเว้นว่างให้ระบบสร้างให้'
+      : 'ข้อมูลซ้ำกับรายการที่มีอยู่แล้ว กรุณาตรวจสอบอีกครั้ง';
+  }
+  if (err.code === '42501' || /row-level security|permission denied/i.test(msg)) return 'ไม่มีสิทธิ์บันทึก ลองออกจากระบบแล้วเข้าสู่ระบบใหม่';
+  if (err.code === '23502') return 'ข้อมูลบางช่องที่จำเป็นยังว่างอยู่';
+  if (/failed to fetch|network|timeout/i.test(msg)) return 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่';
+  return `ระบบขัดข้อง (${msg || 'ไม่ทราบสาเหตุ'})`;
+}
+
 export default function DriversPage() {
   const [supabase] = useState(() => createClient());
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -93,8 +115,23 @@ export default function DriversPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaveError(''); setSaving(true);
+    let driverKey = form.driver_key.trim();
+    if (!driverKey) {
+      // เว้นว่าง → สร้างให้อัตโนมัติ (อ่านรหัสทุกแถวรวมที่ถูกลบ เพราะ UNIQUE ครอบทุกแถว)
+      if (editing?.driver_key) {
+        driverKey = editing.driver_key;
+      } else {
+        const { data: keyRows, error: keyErr } = await supabase.from('drivers').select('driver_key');
+        if (keyErr) {
+          setSaveError(`บันทึกไม่สำเร็จ: ${friendlyDriverError(keyErr)}`);
+          setSaving(false);
+          return;
+        }
+        driverKey = generateDriverKey((keyRows || []).map(r => r.driver_key));
+      }
+    }
     const payload = {
-      driver_key: form.driver_key,
+      driver_key: driverKey,
       name: form.name, nickname: form.nickname,
       license_plate: form.license_plate,
       bank_account: form.bank_account || null,
@@ -113,7 +150,7 @@ export default function DriversPage() {
         ({ error } = await supabase.from('drivers').insert({ ...payload, is_active: true }));
       }
       if (error) {
-        setSaveError(`บันทึกไม่สำเร็จ: ${error.message}`);
+        setSaveError(`บันทึกไม่สำเร็จ: ${friendlyDriverError(error)}`);
         setSaving(false);
         return;
       }
@@ -149,7 +186,7 @@ export default function DriversPage() {
       .eq('id', d.id);
 
     if (error) {
-      alert('ลบไม่สำเร็จ: ' + error.message);
+      alert('ลบไม่สำเร็จ: ' + friendlyDriverError(error));
       return;
     }
     load();
@@ -429,7 +466,7 @@ export default function DriversPage() {
                 <div>
                   <label className="form-label">รหัสคนขับ</label>
                   <input className="form-input" value={form.driver_key}
-                    onChange={e => f('driver_key', e.target.value)} placeholder="DR001" />
+                    onChange={e => f('driver_key', e.target.value)} placeholder="เว้นว่าง = สร้างให้อัตโนมัติ (DR001)" />
                 </div>
                 <div>
                   <label className="form-label">ทะเบียนรถ *</label>
