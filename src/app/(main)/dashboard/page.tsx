@@ -22,7 +22,8 @@ import {
   formatCurrency, formatNumber, calcFuelEfficiency,
   isDateInFilter, getCurrentMonthFilter, getThaiMonthLabel,
 } from '@/lib/utils';
-import { todayBangkok } from '@/lib/dateTh';
+import { todayBangkok, nextMonthStart } from '@/lib/dateTh';
+import { fetchAllRows } from '@/lib/fetchAll';
 
 interface MonthlyTotals {
   total_revenue: number;
@@ -78,13 +79,30 @@ export default function DashboardPage() {
     active: 0, inProgress: 0, waitingPayment: 0, waitingFuel: 0, todayCash: 0,
   });
 
+  // ช่วงวันที่ของเที่ยวที่ต้องใช้: กราฟ 6 เดือนล่าสุด + เดือนที่เลือก (ถ้าอยู่นอกช่วงกราฟ) — ไม่ดึงทั้งตาราง
+  const selectedYm = `${monthFilter.year_be - BUDDHIST_ERA_OFFSET}-${String(monthFilter.month_index + 1).padStart(2, '0')}`;
+
   useEffect(() => {
+    const now = new Date();
+    const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const trendFrom = `${ym(new Date(now.getFullYear(), now.getMonth() - 5, 1))}-01`;
+    const trendTo   = nextMonthStart(ym(now));
+    const selFrom   = `${selectedYm}-01`;
+    const selTo     = nextMonthStart(selectedYm);
+    const ranges: [string, string][] = [[trendFrom, trendTo]];
+    if (selFrom < trendFrom || selFrom >= trendTo) ranges.push([selFrom, selTo]);
+    let cancelled = false;
+
     const load = async () => {
-      const [{ data: dr }, { data: tr }, { data: jobs }] = await Promise.all([
+      const [{ data: dr }, tripResults, { data: jobs }] = await Promise.all([
         supabase.from('drivers').select('*').is('deleted_at', null).eq('is_active', true),
-        supabase.from('trips').select('*').is('deleted_at', null),
+        Promise.all(ranges.map(([f, to]) => fetchAllRows<Trip>((a, b) =>
+          supabase.from('trips').select('*').is('deleted_at', null)
+            .gte('date', f).lt('date', to).order('id').range(a, b)))),
         supabase.from('jobs').select('status, selling_price, date').is('deleted_at', null),
       ]);
+      if (cancelled) return;
+      const tr = tripResults.flatMap(r => r.data);
       setDrivers(dr || []);
       // นับเฉพาะเที่ยวของคนขับที่ยังใช้งาน ให้ตรงกับรายงานรายเดือน (เที่ยวคนขับที่ลบแล้วยังอยู่ใน DB แต่ไม่นับ)
       const activeIds = new Set((dr || []).map(d => d.id));
@@ -102,12 +120,12 @@ export default function DashboardPage() {
     };
     load();
 
-    const channel = supabase.channel('dashboard-realtime')
+    const channel = supabase.channel(`dashboard-realtime-${selectedYm}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => { load(); setReloadTick(t => t + 1); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs'  }, load)
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, []);
+    return () => { cancelled = true; supabase.removeChannel(channel); };
+  }, [selectedYm]);
 
   useEffect(() => {
     const ad = monthFilter.year_be - BUDDHIST_ERA_OFFSET;
@@ -217,9 +235,10 @@ export default function DashboardPage() {
     if (activeTab !== 'reports') return;
     const load = async () => {
       setReportLoading(true);
-      const { data } = await supabase
+      const { data } = await fetchAllRows<Trip>((a, b) => supabase
         .from('trips').select('*').is('deleted_at', null)
-        .gte('date', `${reportYear}-01-01`).lte('date', `${reportYear}-12-31`);
+        .gte('date', `${reportYear}-01-01`).lte('date', `${reportYear}-12-31`)
+        .order('id').range(a, b));
       setReportTrips((data || []).filter(t => activeDriverIds.has(t.driver_id)));
       setReportLoading(false);
     };

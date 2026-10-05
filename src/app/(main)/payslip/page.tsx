@@ -14,6 +14,8 @@ import {
   isDateInFilter, getCurrentMonthFilter, getThaiMonthLabel,
   floorToNearest10, adToBE,
 } from '@/lib/utils';
+import { nextMonthStart } from '@/lib/dateTh';
+import { fetchAllRows } from '@/lib/fetchAll';
 
 // ── PDF fix: company name is ALWAYS pulled from COMPANY.name constant
 // ── Font sizes: 22px for header, 13px minimum for content
@@ -86,19 +88,14 @@ function PayslipContent() {
 
   useEffect(() => {
     const load = async () => {
-      const [{ data: driverData }, { data: tripData }] = await Promise.all([
-        supabase.from('drivers').select('*').is('deleted_at', null).eq('is_active', true),
-        supabase.from('trips').select('*').is('deleted_at', null)
-          .order('date', { ascending: true })
-          .order('created_at', { ascending: true }),
-      ]);
+      const { data: driverData } = await supabase
+        .from('drivers').select('*').is('deleted_at', null).eq('is_active', true);
       if (driverData?.length) {
         setDrivers(driverData);
         const driverParam = searchParams.get('driver');
         const fromParam = driverParam ? driverData.find(d => d.id === driverParam) : null;
         setSelectedDriver(fromParam || driverData[0]);
       }
-      setAllTrips(tripData || []);
 
       const monthParam = searchParams.get('month'); // "YYYY-MM"
       if (monthParam) {
@@ -111,6 +108,28 @@ function PayslipContent() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ดึงเที่ยวเฉพาะคนขับ + เดือนที่เลือก (เดิมดึงทั้งตาราง) ; ตัวกรองด้านล่างยังกรองซ้ำ กันข้อมูลเก่าค้างระหว่างโหลด
+  const selectedDriverId = selectedDriver?.id ?? null;
+  const monthYm = `${monthFilter.year_be - BUDDHIST_ERA_OFFSET}-${String(monthFilter.month_index + 1).padStart(2, '0')}`;
+  const [tripsError, setTripsError] = useState('');
+  useEffect(() => {
+    if (!selectedDriverId) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await fetchAllRows<Trip>((a, b) => supabase
+        .from('trips').select('*').is('deleted_at', null)
+        .eq('driver_id', selectedDriverId)
+        .gte('date', `${monthYm}-01`).lt('date', nextMonthStart(monthYm))
+        .order('date', { ascending: true }).order('created_at', { ascending: true }).order('id')
+        .range(a, b));
+      if (cancelled) return;
+      setTripsError(error ? `โหลดเที่ยววิ่งไม่สำเร็จ (${error.message}) — ลองรีเฟรชหน้า` : '');
+      if (!error) setAllTrips(data);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDriverId, monthYm]);
 
   const driverTrips = useMemo(() => {
     if (!selectedDriver) return [];
@@ -208,6 +227,9 @@ function PayslipContent() {
 
   return (
     <div className="p-6 space-y-6">
+      {tripsError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg no-print">{tripsError}</div>
+      )}
       {/* Header Controls */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-wrap gap-4 items-center justify-between no-print">
         <div className="flex items-center gap-3 flex-wrap">

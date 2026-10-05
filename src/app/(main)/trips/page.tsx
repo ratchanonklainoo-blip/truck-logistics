@@ -18,10 +18,11 @@ import {
 } from '@/lib/constants';
 import {
   calculateTotals, calcNetPay, calcFuelEfficiency,
-  isDateInFilter, getCurrentMonthFilter, getThaiMonthLabel,
+  getCurrentMonthFilter, getThaiMonthLabel,
   formatCurrency, formatNumber, escapeCsvField,
 } from '@/lib/utils';
-import { todayBangkok } from '@/lib/dateTh';
+import { todayBangkok, nextMonthStart } from '@/lib/dateTh';
+import { fetchAllRows } from '@/lib/fetchAll';
 
 // แปลง error จาก Supabase เป็นข้อความไทยที่ผู้ใช้อ่านเข้าใจ
 function friendlySaveError(err: { message?: string; code?: string }): string {
@@ -37,7 +38,6 @@ export default function TripsPage() {
   const supabase = createClient();
 
   const [drivers,         setDrivers]         = useState<Driver[]>([]);
-  const [allTrips,        setAllTrips]         = useState<Trip[]>([]);
   const [selectedDriver,  setSelectedDriver]   = useState<Driver | null>(null);
   const [monthFilter,     setMonthFilter]      = useState<MonthFilter>(getCurrentMonthFilter());
   const [loading,         setLoading]          = useState(true);
@@ -110,43 +110,60 @@ export default function TripsPage() {
     load();
   }, [selectedDriver]);
 
-  // ── Realtime subscription ────────────────────────────────
+  // ── โหลดเฉพาะเดือนที่เลือก + realtime ───────────────────────
+  // เดิมดึงทั้งตาราง trips และรีโหลดทั้งตารางทุกครั้งที่มีการเปลี่ยน — ตอนนี้ดึงเฉพาะเดือน:
+  //   currentDriverTrips = ทุกคอลัมน์ ของคนขับที่เลือก ; allMonthTrips = คอลัมน์ยอดเงิน ของทุกคนในเดือน (การ์ดสรุปบริษัท)
+  const [currentDriverTrips, setCurrentDriverTrips] = useState<Trip[]>([]);
+  const [allMonthTrips,      setAllMonthTrips]      = useState<Pick<Trip, 'driver_id' | 'transport_price' | 'trip_pay' | 'fuel_cost' | 'other_cost'>[]>([]);
+  const [tripsError,         setTripsError]         = useState('');
+  const selectedDriverId = selectedDriver?.id ?? null;
+  const monthYm = `${monthFilter.year_be - BUDDHIST_ERA_OFFSET}-${String(monthFilter.month_index + 1).padStart(2, '0')}`;
+
   useEffect(() => {
+    let cancelled = false;
+    const from = `${monthYm}-01`;
+    const to   = nextMonthStart(monthYm);
     setLoading(true);
-    const fetchTrips = async () => {
-      const { data } = await supabase
-        .from('trips')
-        .select('*')
-        .is('deleted_at', null)
-        .order('date', { ascending: true })
-        .order('created_at', { ascending: true });
-      setAllTrips(data || []);
+
+    const fetchMonth = async () => {
+      const [mine, month] = await Promise.all([
+        selectedDriverId
+          ? fetchAllRows<Trip>((a, b) => supabase.from('trips').select('*')
+              .is('deleted_at', null).eq('driver_id', selectedDriverId)
+              .gte('date', from).lt('date', to)
+              .order('date', { ascending: true }).order('created_at', { ascending: true }).order('id')
+              .range(a, b))
+          : Promise.resolve({ data: [] as Trip[], error: null }),
+        fetchAllRows<Pick<Trip, 'driver_id' | 'transport_price' | 'trip_pay' | 'fuel_cost' | 'other_cost'>>((a, b) =>
+          supabase.from('trips').select('driver_id,transport_price,trip_pay,fuel_cost,other_cost')
+            .is('deleted_at', null).gte('date', from).lt('date', to)
+            .order('id').range(a, b)),
+      ]);
+      if (cancelled) return;
+      const err = mine.error || month.error;
+      setTripsError(err ? `โหลดเที่ยววิ่งไม่สำเร็จ: ${friendlySaveError(err)} — ลองรีเฟรชหน้า` : '');
+      if (!mine.error)  setCurrentDriverTrips(mine.data);
+      if (!month.error) setAllMonthTrips(month.data);
       setLoading(false);
     };
-    fetchTrips();
+    fetchMonth();
 
+    // realtime: โหลดใหม่เฉพาะเมื่อแถวที่เปลี่ยน (ก่อน/หลังแก้) อยู่ในเดือนที่ดูอยู่
+    const inMonth = (row: unknown) => {
+      const d = (row as { date?: string } | null)?.date;
+      return !!d && d >= from && d < to;
+    };
     const channel = supabase
-      .channel('trips-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => {
-        fetchTrips();
+      .channel(`trips-realtime-${monthYm}-${selectedDriverId ?? 'none'}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, payload => {
+        // old มีแค่ id เมื่อ replica identity ไม่ใช่ FULL (UPDATE/DELETE) — รู้ไม่ได้ว่าเดิมอยู่เดือนไหน จึงโหลดเดือนนี้ใหม่
+        const oldHasDate = !!payload.old && 'date' in (payload.old as object);
+        if (inMonth(payload.new) || inMonth(payload.old) || (payload.eventType !== 'INSERT' && !oldHasDate)) fetchMonth();
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, []);
-
-  // ── Filtered trips ────────────────────────────────────────
-  const currentDriverTrips = useMemo(() => {
-    if (!selectedDriver) return [];
-    return allTrips.filter(t =>
-      t.driver_id === selectedDriver.id &&
-      isDateInFilter(t.date, monthFilter),
-    );
-  }, [allTrips, selectedDriver, monthFilter]);
-
-  const allMonthTrips = useMemo(() =>
-    allTrips.filter(t => isDateInFilter(t.date, monthFilter)),
-  [allTrips, monthFilter]);
+    return () => { cancelled = true; supabase.removeChannel(channel); };
+  }, [selectedDriverId, monthYm]);
 
   const driverTotals = useMemo(() => calculateTotals(currentDriverTrips), [currentDriverTrips]);
 
@@ -687,6 +704,10 @@ export default function TripsPage() {
           </div>
         </div>
       </div>
+
+      {tripsError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg">{tripsError}</div>
+      )}
 
       {/* Main Grid: Form + Table */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
