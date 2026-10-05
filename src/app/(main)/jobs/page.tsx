@@ -55,6 +55,11 @@ function getToday() { return new Date().toISOString().slice(0, 10); }
 function getMonthStart() {
   const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
 }
+// ขอบบนค่าเริ่มต้นของช่วงวันที่ = วันนี้ + 30 วัน เพื่อไม่ตัดงานที่นัดล่วงหน้า (ใช้วันที่ท้องถิ่น ไม่ใช้ UTC)
+function getDefaultDateTo() {
+  const d = new Date(); d.setDate(d.getDate() + 30);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 
 export default function JobsPage() {
   const [supabase] = useState(() => createClient());
@@ -65,7 +70,7 @@ export default function JobsPage() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchText, setSearchText] = useState('');
   const [dateFrom, setDateFrom] = useState(getMonthStart());
-  const [dateTo, setDateTo] = useState(getToday());
+  const [dateTo, setDateTo] = useState(getDefaultDateTo());
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showAssign, setShowAssign] = useState<Job | null>(null);
