@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import type { Customer } from '@/types';
 import { formatCurrency } from '@/lib/utils';
+import { isFullyPaid } from '@/lib/jobPayment';
 
 type Tab = 'customers' | 'payments' | 'prices';
 
@@ -232,19 +233,43 @@ export default function CustomersPage() {
       setPayError(`บันทึกรับเงินไม่สำเร็จ: ${error.message}`);
       return;
     }
-    // Mark job as closed if full payment
+    // ปิดงานเฉพาะเมื่อยอดรับรวมของงานนี้ >= ราคาขาย และปิดผ่าน API (ตรวจลำดับสถานะ + บันทึก closed_by/closed_at)
+    let partialNote = '';
     if (payForm.job_id) {
-      const { error: jobError } = await supabase.from('jobs').update({ status: 'closed' }).eq('id', payForm.job_id);
-      if (jobError) {
+      const [{ data: jobRow, error: jobErr }, { data: paidRows, error: paidErr }] = await Promise.all([
+        supabase.from('jobs').select('id,status,selling_price').eq('id', payForm.job_id).is('deleted_at', null).maybeSingle(),
+        supabase.from('customer_payments').select('amount').eq('job_id', payForm.job_id).is('deleted_at', null),
+      ]);
+      const failClose = (msg: string) => {
         setPaySaving(false);
-        setPayError(`บันทึกรับเงินสำเร็จ แต่ปิดงานไม่สำเร็จ: ${jobError.message}`);
+        setPayError(`บันทึกรับเงินสำเร็จ แต่${msg}`);
         loadPayments(); loadWaitingJobs(); loadCustomers();
-        return;
+      };
+      if (jobErr || paidErr) { failClose('ตรวจยอดรับรวมไม่ได้ งานยังไม่ถูกปิด ลองรีเฟรชแล้วตรวจอีกครั้ง'); return; }
+      if (jobRow && jobRow.status === 'waiting_payment') {
+        const totalPaid = (paidRows || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+        if (isFullyPaid(totalPaid, Number(jobRow.selling_price || 0))) {
+          try {
+            const res = await fetch(`/api/jobs/${jobRow.id}`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'closed' }),
+            });
+            if (!res.ok) {
+              const e = await res.json().catch(() => ({}));
+              failClose(`ปิดงานไม่สำเร็จ: ${e.error || 'ไม่ทราบสาเหตุ'}`); return;
+            }
+          } catch {
+            failClose('ปิดงานไม่สำเร็จ: เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'); return;
+          }
+        } else {
+          partialNote = `รับเงินบางส่วนแล้ว (รวม ${formatCurrency(totalPaid)} จาก ${formatCurrency(Number(jobRow.selling_price || 0))}) งานยังอยู่สถานะรอรับเงิน`;
+        }
       }
     }
     setPaySaving(false);
     setShowPayForm(false); setPayForm(EMPTY_PAYMENT);
     loadPayments(); loadWaitingJobs(); loadCustomers();
+    if (partialNote) alert(partialNote);
   };
 
   // ── Save Route Price ──
