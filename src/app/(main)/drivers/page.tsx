@@ -11,6 +11,7 @@ import {
 import type { Driver } from '@/types';
 import { formatCurrency } from '@/lib/utils';
 import { countRealTrips } from '@/lib/tripCount';
+import { sumTripPay } from '@/lib/payrollCalc';
 import SaveLocationInline from '@/components/drivers/SaveLocationInline';
 import MapsLink from '@/components/ui/MapsLink';
 
@@ -97,7 +98,7 @@ export default function DriversPage() {
       statsMap[d.id] = {
         tripCount: countRealTrips(dTrips),
         totalRevenue: dTrips.reduce((s, t) => s + (t.transport_price || 0), 0),
-        totalCommission: dTrips.reduce((s, t) => s + (t.trip_pay || t.transport_price * 0.10 || 0), 0),
+        totalCommission: sumTripPay(dTrips), // ใช้ trip_pay ที่บันทึก (เดิมเที่ยวค่าเที่ยว 0 ถูกนับเป็น 10%)
         totalDistance: totalDist,
         avgFuelEfficiency: totalFuel > 0 ? Math.round((totalDist / totalFuel) * 10) / 10 : 0,
         activeJob: activeJob ? `${activeJob.origin} → ${activeJob.destination}` : null,

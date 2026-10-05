@@ -22,7 +22,12 @@ const tripSchema = z.object({
   product:         z.string().default(''),
   weight:          z.string().default(''),
   transport_price: z.coerce.number().min(0).default(0),
-  trip_pay:        z.coerce.number().min(0).default(0),
+  // ค่าเที่ยวห้ามว่าง (ไม่จ่ายให้ใส่ 0 หรือติ๊ก "ไม่นับค่าเที่ยว") — เดิม coerce ทำให้ช่องว่างกลายเป็น 0 เงียบๆ
+  trip_pay:        z.preprocess(
+    v => (v === '' || v == null ? undefined : Number(v)),
+    z.number({ required_error: 'กรุณากรอกค่าเที่ยว (ไม่จ่ายให้ใส่ 0)', invalid_type_error: 'ค่าเที่ยวต้องเป็นตัวเลข' })
+      .min(0, 'ค่าเที่ยวติดลบไม่ได้'),
+  ),
   odometer_start:  z.coerce.number().min(0).default(0),
   odometer_end:    z.coerce.number().min(0).default(0),
   distance:        z.coerce.number().min(0).default(0),
@@ -453,9 +458,10 @@ export default function TripForm({
               <input
                 type="number" step="0.01"
                 {...register('trip_pay')}
-                disabled={noTripPay}
+                readOnly={noTripPay}
                 className={`form-input ${noTripPay ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`}
               />
+              {errors.trip_pay && <p className="text-red-500 text-xs mt-1">{errors.trip_pay.message}</p>}
             </div>
             <div>
               <label className="form-label">เบิก/หัก (บาท)</label>

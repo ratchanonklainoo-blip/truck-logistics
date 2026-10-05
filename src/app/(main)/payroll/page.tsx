@@ -510,7 +510,7 @@ export default function PayrollPage() {
                                     <th className="text-left px-3 py-2 text-slate-500 font-medium">วันที่</th>
                                     <th className="text-left px-3 py-2 text-slate-500 font-medium">เส้นทาง</th>
                                     <th className="text-right px-3 py-2 text-slate-500 font-medium">ค่าขนส่ง</th>
-                                    <th className="text-right px-3 py-2 text-slate-500 font-medium">ค่ารอบ (10%)</th>
+                                    <th className="text-right px-3 py-2 text-slate-500 font-medium">ค่ารอบ</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -577,7 +577,7 @@ export default function PayrollPage() {
                         {/* Info note */}
                         <div className="flex items-start gap-2 text-xs text-slate-400 bg-slate-50 rounded-lg px-3 py-2">
                           <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                          <span>ค่ารอบคำนวณที่ 10% ของค่าขนส่ง ปัดลงทศนิยมสิบ · ยอดสุทธิ = รายได้ - รายการหัก</span>
+                          <span>ค่ารอบ = ค่าเที่ยวที่บันทึกในแต่ละเที่ยว · เบิก = ยอดเบิกในเที่ยววิ่ง · ยอดสุทธิ = รายได้ − รายการหัก</span>
                         </div>
                       </div>
                     )}

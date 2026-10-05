@@ -23,6 +23,7 @@ import {
 } from '@/lib/utils';
 import { todayBangkok, nextMonthStart } from '@/lib/dateTh';
 import { fetchAllRows } from '@/lib/fetchAll';
+import { sumTripPay } from '@/lib/payrollCalc';
 
 // แปลง error จาก Supabase เป็นข้อความไทยที่ผู้ใช้อ่านเข้าใจ
 function friendlySaveError(err: { message?: string; code?: string }): string {
@@ -169,7 +170,7 @@ export default function TripsPage() {
 
   const companyStats = useMemo(() => {
     const totalRevenue = allMonthTrips.reduce((s, t) => s + (t.transport_price || 0), 0);
-    const totalTripPay = allMonthTrips.reduce((s, t) => s + (t.trip_pay || 0), 0);
+    const totalTripPay = sumTripPay(allMonthTrips);
     const totalFuel    = allMonthTrips.reduce((s, t) => s + (t.fuel_cost || 0), 0);
     const totalOther   = allMonthTrips.reduce((s, t) => s + (t.other_cost || 0), 0);
     const activeDrivers = new Set(allMonthTrips.map(t => t.driver_id)).size || 2;
@@ -378,6 +379,8 @@ export default function TripsPage() {
         const fuel_cost       = toNum(cols[9],  'ค่าน้ำมัน');
         const fuel_litres     = toNum(cols[10], 'ลิตร');
         const transport_price = toNum(cols[11], 'ค่าขนส่ง');
+        // ค่าเที่ยวห้ามว่าง (0 ได้ ต้องพิมพ์ 0) — เดิม Number('') = 0 ทำให้ช่องว่างกลายเป็น 0 เงียบๆ
+        if ((cols[12] ?? '').trim() === '') errors.push('ค่าเที่ยวว่าง (ไม่จ่ายให้ใส่ 0)');
         const trip_pay        = toNum(cols[12], 'ค่าเที่ยว');
         const withdraw        = toNum(cols[13], 'เบิก');
         const other_cost      = toNum(cols[15], 'ค่าอื่นๆ');

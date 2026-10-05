@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { Trip, Driver } from '@/types';
 import { countRealTrips } from '@/lib/tripCount';
+import { tripPayOf, sumTripPay } from '@/lib/payrollCalc';
 import {
   COMPANY, THAI_MONTHS, BUDDHIST_ERA_OFFSET, CHART_COLORS,
 } from '@/lib/constants';
@@ -152,7 +153,7 @@ export default function DashboardPage() {
     const totalRevenue  = monthTrips.reduce((s, t) => s + (t.transport_price || 0), 0);
     const totalFuel     = monthTrips.reduce((s, t) => s + (t.fuel_cost  || 0), 0);
     const totalOther    = monthTrips.reduce((s, t) => s + (t.other_cost || 0), 0);
-    const totalTripPay  = monthTrips.reduce((s, t) => s + (t.trip_pay   || 0), 0);
+    const totalTripPay  = sumTripPay(monthTrips);
     const totalExpenses = totalFuel + totalOther + totalTripPay;
     return { totalRevenue, totalFuel, totalOther, totalTripPay, totalExpenses, netProfit: totalRevenue - totalExpenses };
   }, [monthTrips]);
@@ -168,7 +169,7 @@ export default function DashboardPage() {
     drivers.map(driver => {
       const dTrips = monthTrips.filter(t => t.driver_id === driver.id);
       const revenue  = dTrips.reduce((s, t) => s + (t.transport_price || 0), 0);
-      const trip_pay = dTrips.reduce((s, t) => s + (t.trip_pay   || 0), 0);
+      const trip_pay = sumTripPay(dTrips);
       const fuel_cost  = dTrips.reduce((s, t) => s + (t.fuel_cost  || 0), 0);
       const other_cost = dTrips.reduce((s, t) => s + (t.other_cost || 0), 0);
       const distance   = dTrips.reduce((s, t) => s + (t.distance   || 0), 0);
@@ -208,7 +209,7 @@ export default function DashboardPage() {
       const filter = { month_index: d.getMonth(), year_be: d.getFullYear() + BUDDHIST_ERA_OFFSET };
       const trips = allTrips.filter(t => isDateInFilter(t.date, filter));
       const revenue  = trips.reduce((s, t) => s + (t.transport_price || 0), 0);
-      const expenses = trips.reduce((s, t) => s + (t.fuel_cost || 0) + (t.other_cost || 0) + (t.trip_pay || 0), 0);
+      const expenses = trips.reduce((s, t) => s + (t.fuel_cost || 0) + (t.other_cost || 0) + tripPayOf(t), 0);
       return {
         month: THAI_MONTHS[d.getMonth()].slice(0, 3) + ' ' + String(d.getFullYear() + BUDDHIST_ERA_OFFSET).slice(2),
         'รายรับ': revenue,
@@ -253,21 +254,21 @@ export default function DashboardPage() {
       const mo = reportTrips.filter(t => new Date(t.date).getMonth() === i);
       const revenue = mo.reduce((s, t) => s + (t.transport_price || 0), 0);
       const fuel    = mo.reduce((s, t) => s + (t.fuel_cost || 0), 0);
-      const profit  = revenue - fuel - mo.reduce((s, t) => s + (t.trip_pay || 0) + (t.other_cost || 0), 0);
+      const profit  = revenue - fuel - mo.reduce((s, t) => s + tripPayOf(t) + (t.other_cost || 0), 0);
       return { month, 'รายได้': revenue, 'กำไร': profit };
     }),
   [reportTrips]);
 
   const reportKPI = useMemo(() => ({
     revenue: reportTrips.reduce((s, t) => s + (t.transport_price || 0), 0),
-    profit:  reportTrips.reduce((s, t) => s + (t.transport_price || 0) - (t.fuel_cost || 0) - (t.trip_pay || 0) - (t.other_cost || 0), 0),
+    profit:  reportTrips.reduce((s, t) => s + (t.transport_price || 0) - (t.fuel_cost || 0) - tripPayOf(t) - (t.other_cost || 0), 0),
     trips:   countRealTrips(reportTrips),
     dist:    reportTrips.reduce((s, t) => s + (t.distance || 0), 0),
   }), [reportTrips]);
 
   const reportPieData = useMemo(() => {
     const fuel  = reportTrips.reduce((s, t) => s + (t.fuel_cost || 0), 0);
-    const pay   = reportTrips.reduce((s, t) => s + (t.trip_pay || 0), 0);
+    const pay   = sumTripPay(reportTrips);
     const other = reportTrips.reduce((s, t) => s + (t.other_cost || 0), 0);
     return [
       { name: 'ค่าน้ำมัน', value: fuel },
