@@ -22,6 +22,16 @@ import {
   formatCurrency, formatNumber, escapeCsvField,
 } from '@/lib/utils';
 
+// แปลง error จาก Supabase เป็นข้อความไทยที่ผู้ใช้อ่านเข้าใจ
+function friendlySaveError(err: { message?: string; code?: string }): string {
+  const msg = err.message || '';
+  if (err.code === '42501' || /row-level security|permission denied/i.test(msg)) return 'ไม่มีสิทธิ์บันทึก ลองออกจากระบบแล้วเข้าสู่ระบบใหม่';
+  if (/failed to fetch|network|timeout/i.test(msg)) return 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่';
+  if (err.code === '23502') return 'ข้อมูลบางช่องที่จำเป็นยังว่างอยู่';
+  if (err.code === '22P02' || err.code === '22003') return 'มีช่องตัวเลขที่ค่าไม่ถูกต้อง';
+  return `ระบบขัดข้อง (${msg || 'ไม่ทราบสาเหตุ'})`;
+}
+
 export default function TripsPage() {
   const supabase = createClient();
 
@@ -188,10 +198,15 @@ export default function TripsPage() {
     if (prod.list) setProducts(prod.list);
     if (loc.error || prod.error) alert(`บันทึกเที่ยววิ่งต่อไป แต่${loc.error || prod.error}`);
 
-    if (id) {
-      await supabase.from('trips').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', id);
-    } else {
-      await supabase.from('trips').insert(payload);
+    const { error } = id
+      ? await supabase.from('trips').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', id)
+      : await supabase.from('trips').insert(payload);
+    if (error) {
+      // คงค่าในฟอร์มไว้ (ไม่ล้าง editingTrip) ให้ผู้ใช้กดบันทึกซ้ำได้โดยไม่ต้องกรอกใหม่
+      console.error('[Trips] save failed:', error.message);
+      alert(`บันทึกเที่ยววิ่งไม่สำเร็จ: ${friendlySaveError(error)}
+ข้อมูลในฟอร์มยังอยู่ กดบันทึกอีกครั้งได้`);
+      return;
     }
     setEditingTrip(null);
   }, [supabase]);
