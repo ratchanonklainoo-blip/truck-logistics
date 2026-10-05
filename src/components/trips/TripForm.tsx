@@ -130,16 +130,18 @@ export default function TripForm({
     }
   }, [editingTrip]);
 
-  // Auto-calc trip_pay when transport_price changes (skip if no-commission mode)
-  const transportPrice = watch('transport_price');
-  useEffect(() => {
-    if (noTripPay) {
-      setValue('trip_pay', 0);
-    } else {
-      const pay = calcCommission(safeNumber(transportPrice), COMMISSION_RATE);
-      setValue('trip_pay', pay);
-    }
-  }, [transportPrice, noTripPay, setValue]);
+  // คำนวณค่าเที่ยว 10% ใหม่ "เฉพาะตอนผู้ใช้พิมพ์ค่าขนส่งหรือสลับติ๊ก 'ไม่นับค่าเที่ยว'" เท่านั้น
+  // (ไม่ใช้ useEffect ผูกกับค่าฟอร์ม เพราะเปิดโหมดแก้ไข/reset แล้วจะเขียนทับค่าเที่ยวเดิมที่ไม่เท่า 10% ของเที่ยวเก่า)
+  const handleTransportPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (noTripPay) return; // โหมดไม่นับค่าเที่ยว คงเป็น 0
+    setValue('trip_pay', calcCommission(safeNumber(e.target.value === '' ? 0 : Number(e.target.value)), COMMISSION_RATE));
+  };
+
+  const handleToggleNoTripPay = () => {
+    const next = !noTripPay;
+    setNoTripPay(next);
+    setValue('trip_pay', next ? 0 : calcCommission(safeNumber(watch('transport_price')), COMMISSION_RATE));
+  };
 
   // Auto-calc distance when odometer changes
   // Only overwrite distance if odometer_end > 0 (user actually entered odometer data)
@@ -339,7 +341,7 @@ export default function TripForm({
           </div>
           <div>
             <label className="form-label">ค่าขนส่ง (บาท)</label>
-            <input type="number" {...register('transport_price')} className="form-input" placeholder="0" />
+            <input type="number" {...register('transport_price', { onChange: handleTransportPriceChange })} className="form-input" placeholder="0" />
           </div>
         </div>
 
@@ -425,7 +427,7 @@ export default function TripForm({
           {/* No-commission toggle */}
           <label className="flex items-center gap-2.5 cursor-pointer select-none w-fit">
             <div
-              onClick={() => setNoTripPay(v => !v)}
+              onClick={handleToggleNoTripPay}
               className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
                 noTripPay
                   ? 'bg-red-500 border-red-500'
