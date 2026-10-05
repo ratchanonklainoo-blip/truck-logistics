@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { countRealTrips } from '@/lib/tripCount';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const { data: trips } = await supabase
     .from('trips')
-    .select('transport_price, trip_pay, distance, fuel_litres, withdraw')
+    .select('origin, destination, transport_price, trip_pay, distance, fuel_litres, withdraw')
     .eq('driver_id', driver_id)
     .gte('date', dateFrom)
     .lte('date', dateTo)
@@ -107,7 +108,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // Prefer trips.withdraw if > 0, otherwise fall back to advance_requests
   const totalAdvance = totalWithdrawFromTrips > 0 ? totalWithdrawFromTrips : totalAdvanceRequests;
   const totalDistance = tripList.reduce((s, t) => s + (t.distance || 0), 0);
-  const tripCount = tripList.length;
+  const tripCount = countRealTrips(tripList); // แถว '-'→'-' ไม่นับเป็นเที่ยว (เงินยังนับตามเดิม)
 
   const baseSalary = driver.base_salary || 0;
   const socialSecurity = driver.social_security || 0;

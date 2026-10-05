@@ -1,5 +1,6 @@
 import { BUDDHIST_ERA_OFFSET, THAI_MONTHS, THAI_MONTHS_SHORT, ROUND_DOWN_TO } from './constants';
 import type { MonthFilter, TripTotals, Trip } from '@/types';
+import { isRealTrip } from './tripCount';
 
 // ─── ปัดลง (ห้ามปัดขึ้น) ────────────────────────────────────
 // ใช้กับเลขบวกเท่านั้น — เลขติดลบ (คนขับค้างชำระ) คงค่าตรง ไม่ปัดออกจากศูนย์
@@ -70,7 +71,7 @@ export function formatNumber(num: number, decimals = 0): string {
 export function calculateTotals(trips: Trip[]): TripTotals {
   return trips.reduce<TripTotals>(
     (acc, t) => ({
-      trips:           acc.trips + 1,
+      trips:           acc.trips + (isRealTrip(t) ? 1 : 0), // แถว '-'→'-' ไม่นับเป็นเที่ยว (เงินยังนับ)
       transport_price: acc.transport_price + (t.transport_price || 0),
       trip_pay:        acc.trip_pay        + (t.trip_pay        || 0),
       fuel_cost:       acc.fuel_cost       + (t.fuel_cost       || 0),

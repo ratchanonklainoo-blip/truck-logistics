@@ -14,6 +14,7 @@ import {
   Plus, ClipboardList, Zap,
 } from 'lucide-react';
 import type { Trip, Driver } from '@/types';
+import { countRealTrips } from '@/lib/tripCount';
 import {
   COMPANY, THAI_MONTHS, BUDDHIST_ERA_OFFSET, CHART_COLORS,
 } from '@/lib/constants';
@@ -156,7 +157,7 @@ export default function DashboardPage() {
       return {
         driver, nickname: driver.nickname,
         revenue, trip_pay, fuel_cost, other_cost,
-        trips: dTrips.length, distance, fuel_litres,
+        trips: countRealTrips(dTrips), distance, fuel_litres,
         fuel_efficiency: calcFuelEfficiency(distance, fuel_litres),
       };
     }),
@@ -240,7 +241,7 @@ export default function DashboardPage() {
   const reportKPI = useMemo(() => ({
     revenue: reportTrips.reduce((s, t) => s + (t.transport_price || 0), 0),
     profit:  reportTrips.reduce((s, t) => s + (t.transport_price || 0) - (t.fuel_cost || 0) - (t.trip_pay || 0) - (t.other_cost || 0), 0),
-    trips:   reportTrips.length,
+    trips:   countRealTrips(reportTrips),
     dist:    reportTrips.reduce((s, t) => s + (t.distance || 0), 0),
   }), [reportTrips]);
 
@@ -260,7 +261,7 @@ export default function DashboardPage() {
       const dTrips = reportTrips.filter(t => t.driver_id === d.id);
       return {
         name: d.nickname,
-        'เที่ยว': dTrips.length,
+        'เที่ยว': countRealTrips(dTrips),
         'รายได้': dTrips.reduce((s, t) => s + (t.transport_price || 0), 0),
         'ค่าน้ำมัน': dTrips.reduce((s, t) => s + (t.fuel_cost || 0), 0),
       };

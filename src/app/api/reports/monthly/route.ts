@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { isRealTrip } from '@/lib/tripCount';
 import { bangkokToday, fixedExpenseProgress, fixedExpenseStatusForMonth } from '@/lib/fixedExpenses';
 
 export const dynamic = 'force-dynamic';
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const { data: trips, error: tripsErr } = await supabase
     .from('trips')
     .select(`
-      driver_id, transport_price, trip_pay, fuel_cost, fuel_litres,
+      driver_id, origin, destination, transport_price, trip_pay, fuel_cost, fuel_litres,
       distance, other_cost, withdraw,
       drivers!trips_driver_id_fkey(id, name, nickname, license_plate, base_salary, social_security, is_active, deleted_at)
     `)
@@ -93,6 +94,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   // 5. Aggregate per driver
   const summaryMap: Record<string, DriverSummary> = {};
+  const rowCounts: Record<string, number> = {}; // จำนวนแถวทั้งหมด ใช้จัดลำดับแจกค่าประจำรถ (คงลำดับเดิม ไม่ให้เงินเปลี่ยน)
 
   for (const t of (trips || [])) {
     const dr = (t as any).drivers;
@@ -125,7 +127,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       };
     }
     const s = summaryMap[did];
-    s.trip_count += 1;
+    s.trip_count += isRealTrip(t as any) ? 1 : 0; // แถว '-'→'-' ไม่นับเป็นเที่ยว แต่เงินด้านล่างนับตามเดิม
+    rowCounts[did] = (rowCounts[did] || 0) + 1;
     s.total_revenue += t.transport_price || 0;
     s.total_fuel_cost += t.fuel_cost || 0;
     s.total_fuel_litres += t.fuel_litres || 0;
@@ -167,7 +170,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   });
 
   const assignedPlates = new Set<string>();
-  const sortedForAssign = [...rawSummaries].sort((a, b) => b.trip_count - a.trip_count);
+  const sortedForAssign = [...rawSummaries].sort((a, b) => (rowCounts[b.driver_id] || 0) - (rowCounts[a.driver_id] || 0));
 
   for (const s of sortedForAssign) {
     const norm = normalizePlate(s.truck_license_plate);

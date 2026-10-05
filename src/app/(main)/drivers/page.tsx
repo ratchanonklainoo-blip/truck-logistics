@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import type { Driver } from '@/types';
 import { formatCurrency } from '@/lib/utils';
+import { countRealTrips } from '@/lib/tripCount';
 import SaveLocationInline from '@/components/drivers/SaveLocationInline';
 import MapsLink from '@/components/ui/MapsLink';
 
@@ -71,7 +72,7 @@ export default function DriversPage() {
   const load = useCallback(async () => {
     const [{ data: drData }, { data: tripData }, { data: jobData }, { data: locData }] = await Promise.all([
       supabase.from('drivers').select('*').is('deleted_at', null).order('created_at'),
-      supabase.from('trips').select('driver_id,transport_price,trip_pay,distance,fuel_litres,fuel_cost')
+      supabase.from('trips').select('driver_id,origin,destination,transport_price,trip_pay,distance,fuel_litres,fuel_cost')
         .is('deleted_at', null),
       supabase.from('jobs').select('assigned_driver_id,status,origin,destination')
         .is('deleted_at', null).eq('status', 'in_progress'),
@@ -94,7 +95,7 @@ export default function DriversPage() {
       const totalFuel = dTrips.reduce((s, t) => s + (t.fuel_litres || 0), 0);
       const activeJob = jobList.find(j => j.assigned_driver_id === d.id);
       statsMap[d.id] = {
-        tripCount: dTrips.length,
+        tripCount: countRealTrips(dTrips),
         totalRevenue: dTrips.reduce((s, t) => s + (t.transport_price || 0), 0),
         totalCommission: dTrips.reduce((s, t) => s + (t.trip_pay || t.transport_price * 0.10 || 0), 0),
         totalDistance: totalDist,
