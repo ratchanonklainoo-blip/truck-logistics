@@ -29,6 +29,7 @@ interface MonthlyTotals {
   total_extra_expenses: number;
   total_driver_cost: number;
   total_fixed_expenses: number;
+  net_profit: number;
   net_after_fixed: number;
 }
 
@@ -138,9 +139,10 @@ export default function DashboardPage() {
 
   const monthlyExpenses = monthlyTotals
     ? monthlyTotals.total_fuel_cost + monthlyTotals.total_other_cost + monthlyTotals.total_extra_expenses
-      + monthlyTotals.total_driver_cost + monthlyTotals.total_fixed_expenses
+      + monthlyTotals.total_driver_cost
     : 0;
-  const monthlyProfit = monthlyTotals ? monthlyTotals.net_after_fixed : 0;
+  // กำไร dashboard = ก่อนหักค่าใช้จ่ายประจำ (CEO สั่ง) ; หน้ารายงานยังใช้ net_after_fixed
+  const monthlyProfit = monthlyTotals ? monthlyTotals.net_profit : 0;
 
   const driverStats = useMemo<DriverStat[]>(() =>
     drivers.map(driver => {
@@ -369,7 +371,7 @@ export default function DashboardPage() {
             label: 'กำไรสุทธิ',
             value: monthlyTotals ? formatCurrency(monthlyProfit) : (monthlyError ? 'โหลดไม่ได้' : '…'),
             color: monthlyProfit >= 0 ? 'border-emerald-500 text-emerald-600 bg-emerald-50' : 'border-red-500 text-red-600 bg-red-50',
-            note: 'รายรับ − น้ำมัน − ค่าเที่ยว/เงินเดือนฐาน − ค่าใช้จ่ายอื่น − ค่าใช้จ่ายประจำ (เท่ากับหน้ารายงานรายเดือน)' },
+            note: 'รายรับ − น้ำมัน − ค่าเที่ยว − เงินเดือนฐาน − ค่าใช้จ่ายอื่น (ไม่หักค่าใช้จ่ายประจำ)' },
         ].map(({ icon: Icon, label, value, color, note }) => (
           <div key={label} className={`bg-white rounded-xl border-l-4 p-4 shadow-sm ${color}`}>
             <div className="flex items-center justify-between mb-2">
