@@ -13,11 +13,13 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
   const body = await req.json();
   const { action, ...rest } = body;
 
-  const { data: payroll } = await supabase.from('payrolls').select('status').eq('id', id).single();
+  const { data: payroll } = await supabase.from('payrolls')
+    .select('status, base_salary, total_commission, total_advance, social_security')
+    .eq('id', id).is('deleted_at', null).single();
   if (!payroll) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   if (action === 'approve') {
-    if (payroll.status !== 'draft') return NextResponse.json({ error: 'Must be draft' }, { status: 409 });
+    if (payroll.status !== 'draft') return NextResponse.json({ error: 'อนุมัติได้เฉพาะใบที่เป็นร่าง' }, { status: 409 });
     const { data, error } = await supabase.from('payrolls')
       .update({ status: 'approved', approved_by: user.id, approved_at: new Date().toISOString() })
       .eq('id', id).select().single();
@@ -26,7 +28,7 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
   }
 
   if (action === 'pay') {
-    if (payroll.status !== 'approved') return NextResponse.json({ error: 'Must be approved' }, { status: 409 });
+    if (payroll.status !== 'approved') return NextResponse.json({ error: 'ต้องอนุมัติก่อนจึงจะบันทึกการจ่ายได้' }, { status: 409 });
     const { data, error } = await supabase.from('payrolls')
       .update({ status: 'paid', paid_by: user.id, paid_at: new Date().toISOString() })
       .eq('id', id).select().single();
@@ -34,8 +36,43 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
     return NextResponse.json({ data });
   }
 
-  // General edit (adjustments)
-  const { data, error } = await supabase.from('payrolls').update(rest).eq('id', id).select().single();
+  // General edit — แก้ได้เฉพาะรายได้อื่น/รายการหักอื่น/หมายเหตุ ของใบที่ยังเป็น draft
+  // (ห้ามส่ง status, net_pay, driver_id ฯลฯ มาแก้ตรงๆ) แล้วคำนวณยอดรวม/สุทธิใหม่ฝั่ง server
+  if (payroll.status !== 'draft') {
+    return NextResponse.json({ error: 'ใบเงินเดือนที่อนุมัติหรือจ่ายแล้วแก้ไขไม่ได้' }, { status: 409 });
+  }
+
+  const updates: Record<string, unknown> = {};
+  for (const f of ['other_additions', 'other_deductions'] as const) {
+    if (rest[f] === undefined) continue;
+    const n = Number(rest[f]);
+    if (rest[f] === null || rest[f] === '' || !Number.isFinite(n) || n < 0) {
+      return NextResponse.json({ error: 'จำนวนเงินต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป' }, { status: 400 });
+    }
+    updates[f] = Math.round(n * 100) / 100;
+  }
+  if (rest.notes !== undefined) {
+    if (rest.notes !== null && typeof rest.notes !== 'string') {
+      return NextResponse.json({ error: 'หมายเหตุต้องเป็นข้อความ' }, { status: 400 });
+    }
+    updates.notes = rest.notes;
+  }
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: 'ไม่มีฟิลด์ที่แก้ไขได้' }, { status: 400 });
+  }
+
+  if (updates.other_additions !== undefined || updates.other_deductions !== undefined) {
+    const { data: cur, error: curErr } = await supabase.from('payrolls')
+      .select('other_additions, other_deductions').eq('id', id).single();
+    if (curErr || !cur) return NextResponse.json({ error: curErr?.message || 'Not found' }, { status: 500 });
+    const add = Number(updates.other_additions ?? cur.other_additions ?? 0);
+    const ded = Number(updates.other_deductions ?? cur.other_deductions ?? 0);
+    const gross = Number(payroll.base_salary) + Number(payroll.total_commission) + add;
+    updates.gross_pay = Math.round(gross * 100) / 100;
+    updates.net_pay = Math.round((gross - Number(payroll.total_advance) - Number(payroll.social_security) - ded) * 100) / 100;
+  }
+
+  const { data, error } = await supabase.from('payrolls').update(updates).eq('id', id).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ data });
 }

@@ -205,19 +205,33 @@ export default function PayrollPage() {
     setActionLoading(null);
   };
 
-  const handleApprove = async (p: Payroll) => {
-    setActionLoading(p.id + '-approve');
-    await supabase.from('payrolls').update({ status: 'approved', approved_at: new Date().toISOString() }).eq('id', p.id);
-    await loadData();
-    setActionLoading(null);
+  // อนุมัติ/จ่ายผ่าน API เพื่อบันทึก approved_by/paid_by และเช็ค error
+  const runAction = async (p: Payroll, action: 'approve' | 'pay', key: string) => {
+    setActionLoading(p.id + '-' + key);
+    try {
+      const res = await fetch(`/api/payroll/${p.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        alert(j.error || 'บันทึกไม่สำเร็จ กรุณาลองใหม่');
+        return;
+      }
+      await loadData();
+    } catch {
+      alert('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบสัญญาณอินเทอร์เน็ตแล้วลองใหม่');
+    } finally {
+      setActionLoading(null);
+    }
   };
+
+  const handleApprove = (p: Payroll) => runAction(p, 'approve', 'approve');
 
   const handlePay = async (p: Payroll) => {
     if (!confirm(`ยืนยันการจ่ายเงินเดือนให้ ${p.driver?.nickname}?`)) return;
-    setActionLoading(p.id + '-pay');
-    await supabase.from('payrolls').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', p.id);
-    await loadData();
-    setActionLoading(null);
+    await runAction(p, 'pay', 'pay');
   };
 
   // Summary totals
