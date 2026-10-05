@@ -107,7 +107,8 @@ export default function PayrollPage() {
     setDrivers(drList);
     const drMap: Record<string, Driver> = {};
     drList.forEach(d => { drMap[d.id] = d; });
-    const enriched = (pay || []).map(p => ({ ...p, driver: drMap[p.driver_id] || null }));
+    // แสดง/รวมยอด/sync เฉพาะคนขับที่ยังใช้งาน (ใบของคนขับที่ลบหรือปิดใช้งานยังอยู่ใน DB แต่ไม่โชว์)
+    const enriched = (pay || []).filter(p => drMap[p.driver_id]).map(p => ({ ...p, driver: drMap[p.driver_id] }));
 
     // Auto-sync: always recalculate draft payrolls so commission reflects latest trip data
     const drafts = enriched.filter(p => p.status === 'draft');
@@ -122,7 +123,7 @@ export default function PayrollPage() {
       const { data: refreshed } = await supabase.from('payrolls').select('*')
         .is('deleted_at', null).eq('month_year', selectedMonth)
         .order('created_at', { ascending: true });
-      const re = (refreshed || []).map(p => ({ ...p, driver: drMap[p.driver_id] || null }));
+      const re = (refreshed || []).filter(p => drMap[p.driver_id]).map(p => ({ ...p, driver: drMap[p.driver_id] }));
       setPayrolls(re as Payroll[]);
     } else {
       setPayrolls(enriched as Payroll[]);
