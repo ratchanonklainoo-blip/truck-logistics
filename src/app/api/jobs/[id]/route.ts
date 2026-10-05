@@ -11,7 +11,7 @@ function validateCoords(rest: Record<string, unknown>): string | null {
     const n = Number(v);
     const isLat = field.endsWith('_lat');
     if (isLat ? !isValidLat(n) : !isValidLng(n)) {
-      return `invalid ${field} (${isLat ? 'must be -90..90' : 'must be -180..180'})`;
+      return `${isLat ? 'ละติจูด' : 'ลองจิจูด'}ไม่ถูกต้อง (${field}) ต้องอยู่ระหว่าง ${isLat ? '-90 ถึง 90' : '-180 ถึง 180'}`;
     }
   }
   return null;
@@ -20,7 +20,7 @@ function validateCoords(rest: Record<string, unknown>): string | null {
 export const dynamic = 'force-dynamic';
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
-  new:             ['waiting_driver'],
+  new:             ['waiting_driver', 'assigned'], // จัดรถให้คนขับได้ทันทีโดยไม่ต้องผ่าน 'รอจัดรถ'
   waiting_driver:  ['assigned'],
   assigned:        ['driver_accepted', 'waiting_driver'],
   driver_accepted: ['in_progress'],
@@ -30,17 +30,22 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   closed:          [],
 };
 
+const STATUS_TH: Record<string, string> = {
+  new: 'งานใหม่', waiting_driver: 'รอจัดรถ', assigned: 'จัดรถแล้ว', driver_accepted: 'คนขับรับงาน',
+  in_progress: 'กำลังวิ่ง', delivered: 'ส่งงานแล้ว', waiting_payment: 'รอรับเงิน', closed: 'ปิดงาน',
+};
+
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Params): Promise<NextResponse> {
   const { id } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!user) return NextResponse.json({ error: 'กรุณาเข้าสู่ระบบใหม่' }, { status: 401 });
 
   const { data: job, error } = await supabase
     .from('jobs').select('*').eq('id', id).single();
-  if (error || !job) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (error || !job) return NextResponse.json({ error: 'ไม่พบงานนี้' }, { status: 404 });
 
   const [dr, cu] = await Promise.all([
     job.assigned_driver_id
@@ -58,23 +63,26 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
   const { id } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!user) return NextResponse.json({ error: 'กรุณาเข้าสู่ระบบใหม่' }, { status: 401 });
 
   const body = await req.json();
   const { action, status: newStatus, assigned_driver_id, notes, profit, ...rest } = body;
 
   const { data: job, error: fetchErr } = await supabase
     .from('jobs').select('*').eq('id', id).single();
-  if (fetchErr || !job) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (fetchErr || !job) return NextResponse.json({ error: 'ไม่พบงานนี้' }, { status: 404 });
 
   // Status transition
   if (newStatus) {
     const allowed = VALID_TRANSITIONS[job.status] || [];
     if (!allowed.includes(newStatus)) {
       return NextResponse.json({
-        error: `Invalid transition: ${job.status} → ${newStatus}`,
+        error: `เปลี่ยนสถานะงานจาก "${STATUS_TH[job.status] || job.status}" เป็น "${STATUS_TH[newStatus] || newStatus}" ไม่ได้`,
         allowed,
       }, { status: 409 });
+    }
+    if (newStatus === 'assigned' && !assigned_driver_id && !job.assigned_driver_id) {
+      return NextResponse.json({ error: 'กรุณาเลือกคนขับก่อนจัดรถ' }, { status: 400 });
     }
 
     const update: Record<string, unknown> = { status: newStatus };
@@ -88,7 +96,7 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
 
     const { data, error } = await supabase
       .from('jobs').update(update).eq('id', id).select().single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: `เปลี่ยนสถานะงานไม่สำเร็จ: ${error.message}` }, { status: 500 });
     return NextResponse.json({ data });
   }
 
@@ -97,8 +105,13 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
   if (coordErr) return NextResponse.json({ error: coordErr }, { status: 400 });
 
   const { data, error } = await supabase
-    .from('jobs').update({ ...rest, ...(notes !== undefined && { notes }) }).eq('id', id).select().single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    .from('jobs').update({
+      ...rest,
+      ...(notes !== undefined && { notes }),
+      // ฟอร์มแก้ไขงานส่ง assigned_driver_id มาด้วย — เดิมถูกตัดทิ้งเงียบๆ จึงเปลี่ยนคนขับจากหน้าแก้ไขไม่ได้
+      ...(assigned_driver_id !== undefined && { assigned_driver_id: assigned_driver_id || null }),
+    }).eq('id', id).select().single();
+  if (error) return NextResponse.json({ error: `บันทึกงานไม่สำเร็จ: ${error.message}` }, { status: 500 });
   return NextResponse.json({ data });
 }
 
@@ -106,10 +119,10 @@ export async function DELETE(_req: NextRequest, { params }: Params): Promise<Nex
   const { id } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!user) return NextResponse.json({ error: 'กรุณาเข้าสู่ระบบใหม่' }, { status: 401 });
 
   const { error } = await supabase
     .from('jobs').update({ deleted_at: new Date().toISOString() }).eq('id', id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: `ลบงานไม่สำเร็จ: ${error.message}` }, { status: 500 });
   return NextResponse.json({ data: { deleted: true } });
 }
