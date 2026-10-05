@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import type { FuelEvent, Driver } from '@/types';
 import { formatCurrency } from '@/lib/utils';
+import { todayBangkok } from '@/lib/dateTh';
 
 // ── Status config ─────────────────────────────────────────────
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: React.ElementType }> = {
@@ -434,7 +435,7 @@ function QuickEntryModal({
                 type="date"
                 className="form-input"
                 value={fuelDate}
-                max={new Date().toISOString().slice(0, 10)}
+                max={todayBangkok()}
                 onChange={e => setFuelDate(e.target.value)}
               />
             </div>

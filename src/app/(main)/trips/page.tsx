@@ -21,6 +21,7 @@ import {
   isDateInFilter, getCurrentMonthFilter, getThaiMonthLabel,
   formatCurrency, formatNumber, escapeCsvField,
 } from '@/lib/utils';
+import { todayBangkok } from '@/lib/dateTh';
 
 // แปลง error จาก Supabase เป็นข้อความไทยที่ผู้ใช้อ่านเข้าใจ
 function friendlySaveError(err: { message?: string; code?: string }): string {
@@ -68,7 +69,7 @@ export default function TripsPage() {
   const [deletingExp, setDeletingExp] = useState<string | null>(null);
   const [newExp, setNewExp] = useState({
     category: 'toll', description: '', amount: '',
-    date: new Date().toISOString().slice(0, 10), driver_id: '',
+    date: todayBangkok(), driver_id: '',
   });
 
   // ── Load drivers ─────────────────────────────────────────
@@ -480,7 +481,7 @@ export default function TripsPage() {
       return;
     }
     setShowAddExp(false);
-    setNewExp({ category: 'toll', description: '', amount: '', date: new Date().toISOString().slice(0,10), driver_id: '' });
+    setNewExp({ category: 'toll', description: '', amount: '', date: todayBangkok(), driver_id: '' });
     await loadExpenses();
   };
 

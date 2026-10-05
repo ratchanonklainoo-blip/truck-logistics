@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { todayBangkok } from '@/lib/dateTh';
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const supabase = await createClient();
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     .eq('id', driver_id)
     .single();
 
-  const monthYear = new Date().toISOString().slice(0, 7);
+  const monthYear = todayBangkok().slice(0, 7);
   const limit = driver?.monthly_advance_limit || 5000;
 
   // Check monthly limit

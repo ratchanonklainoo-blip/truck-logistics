@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { verifyLineSignature } from '@/lib/line/webhook';
 import { replyMessage, pushMessage } from '@/lib/line/client';
+import { todayBangkok } from '@/lib/dateTh';
 
 export const dynamic = 'force-dynamic';
 
@@ -325,7 +326,7 @@ async function triggerOcrPipeline(fuelEventId: string): Promise<void> {
 async function createAdvanceRequest(
   driver: DriverRow, amount: number, reason: string, replyToken: string, supabase: SupabaseClient
 ): Promise<void> {
-  const monthYear = new Date().toISOString().slice(0, 7);
+  const monthYear = todayBangkok().slice(0, 7);
   const limit = driver.monthly_advance_limit || 5000;
 
   const { data: monthAdvances } = await supabase.from('advance_requests')

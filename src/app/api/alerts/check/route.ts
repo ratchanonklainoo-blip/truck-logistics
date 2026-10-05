@@ -2,6 +2,7 @@
 // Call this on a schedule or after key events
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { todayBangkok } from '@/lib/dateTh';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const generated: string[] = [];
 
   // ── 1. Overdue customer payments ──────────────────────────
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayBangkok();
   const { data: overdueJobs } = await supabase.from('jobs')
     .select('id, customer_id, selling_price, payment_due_date, origin, destination')
     .eq('status', 'waiting_payment')

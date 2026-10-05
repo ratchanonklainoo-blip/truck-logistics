@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client';
 import { mergeSuggestions } from '@/lib/suggestions';
 import ComboInput from '@/components/ui/ComboInput';
 import { addToSettingList } from '@/lib/settingsList';
+import { todayBangkok } from '@/lib/dateTh';
 
 interface Driver { id: string; name: string; nickname: string; license_plate: string; }
 interface RecurringRoute {
@@ -15,7 +16,7 @@ interface RecurringRoute {
   product: string; default_transport_price: number;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayBangkok();
 const emptyTemplate = { name: '', origin: '', destination: '', product: '', default_transport_price: '' };
 
 export default function RecurringTripsModal({ drivers, onClose }: { drivers: Driver[]; onClose: () => void }) {

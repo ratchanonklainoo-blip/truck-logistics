@@ -22,6 +22,7 @@ import {
   formatCurrency, formatNumber, calcFuelEfficiency,
   isDateInFilter, getCurrentMonthFilter, getThaiMonthLabel,
 } from '@/lib/utils';
+import { todayBangkok } from '@/lib/dateTh';
 
 interface MonthlyTotals {
   total_revenue: number;
@@ -88,7 +89,7 @@ export default function DashboardPage() {
       // นับเฉพาะเที่ยวของคนขับที่ยังใช้งาน ให้ตรงกับรายงานรายเดือน (เที่ยวคนขับที่ลบแล้วยังอยู่ใน DB แต่ไม่นับ)
       const activeIds = new Set((dr || []).map(d => d.id));
       setAllTrips((tr || []).filter(t => activeIds.has(t.driver_id)));
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayBangkok();
       const closedToday = (jobs || []).filter(j => j.status === 'closed' && j.date === today);
       setJobStats({
         active:         (jobs || []).filter(j => j.status !== 'closed').length,

@@ -12,6 +12,7 @@ import {
 import type { Customer } from '@/types';
 import { formatCurrency } from '@/lib/utils';
 import { isFullyPaid } from '@/lib/jobPayment';
+import { todayBangkok } from '@/lib/dateTh';
 
 type Tab = 'customers' | 'payments' | 'prices';
 
@@ -68,9 +69,20 @@ const EMPTY_CUST = {
 
 const EMPTY_PAYMENT = {
   customer_id: '', job_id: '', amount: '',
-  payment_date: new Date().toISOString().slice(0, 10),
+  payment_date: todayBangkok(),
   payment_method: 'transfer', reference_no: '', notes: '',
 };
+
+// แปลง error จาก Supabase เป็นข้อความไทย
+function friendlyDbError(err: { message?: string; code?: string }): string {
+  const msg = err.message || '';
+  if (err.code === '23505' || /duplicate key/i.test(msg)) return 'ข้อมูลซ้ำกับรายการที่มีอยู่แล้ว กรุณาตรวจสอบอีกครั้ง';
+  if (err.code === '23503' || /foreign key/i.test(msg)) return 'ข้อมูลที่อ้างถึง (ลูกค้า/งาน) ไม่มีอยู่แล้วหรือถูกลบไป หรือรายการนี้ยังถูกใช้งานอยู่ ลองรีเฟรชหน้าแล้วเลือกใหม่';
+  if (err.code === '42501' || /row-level security|permission denied/i.test(msg)) return 'ไม่มีสิทธิ์บันทึก ลองออกจากระบบแล้วเข้าสู่ระบบใหม่';
+  if (err.code === '23502') return 'ข้อมูลบางช่องที่จำเป็นยังว่างอยู่';
+  if (/failed to fetch|network|timeout/i.test(msg)) return 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่';
+  return `ระบบขัดข้อง (${msg || 'ไม่ทราบสาเหตุ'})`;
+}
 
 const EMPTY_PRICE = {
   origin: '', destination: '', customer_id: '', agreed_price: '', notes: '',
@@ -116,7 +128,7 @@ export default function CustomersPage() {
       supabase.from('jobs').select('id,customer_id,status,selling_price,payment_type,payment_due_date,date')
         .is('deleted_at', null),
     ]);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayBangkok();
     const enriched: CustomerWithStats[] = (cuData || []).map(c => {
       const cjobs = (jobData || []).filter(j => j.customer_id === c.id);
       return {
@@ -195,7 +207,7 @@ export default function CustomersPage() {
       : await supabase.from('customers').insert(payload);
     setCustSaving(false);
     if (error) {
-      setCustError(`บันทึกไม่สำเร็จ: ${error.message}`);
+      setCustError(`บันทึกไม่สำเร็จ: ${friendlyDbError(error)}`);
       return;
     }
     setShowCustForm(false); setEditingCust(null); setCustForm(EMPTY_CUST);
@@ -230,7 +242,7 @@ export default function CustomersPage() {
     });
     if (error) {
       setPaySaving(false);
-      setPayError(`บันทึกรับเงินไม่สำเร็จ: ${error.message}`);
+      setPayError(`บันทึกรับเงินไม่สำเร็จ: ${friendlyDbError(error)}`);
       return;
     }
     // ปิดงานเฉพาะเมื่อยอดรับรวมของงานนี้ >= ราคาขาย และปิดผ่าน API (ตรวจลำดับสถานะ + บันทึก closed_by/closed_at)
@@ -267,7 +279,7 @@ export default function CustomersPage() {
       }
     }
     setPaySaving(false);
-    setShowPayForm(false); setPayForm(EMPTY_PAYMENT);
+    setShowPayForm(false); setPayForm({ ...EMPTY_PAYMENT, payment_date: todayBangkok() });
     loadPayments(); loadWaitingJobs(); loadCustomers();
     if (partialNote) alert(partialNote);
   };
@@ -285,7 +297,7 @@ export default function CustomersPage() {
     });
     setPriceSaving(false);
     if (error) {
-      setPriceError(`บันทึกไม่สำเร็จ: ${error.message}`);
+      setPriceError(`บันทึกไม่สำเร็จ: ${friendlyDbError(error)}`);
       return;
     }
     setShowPriceForm(false); setPriceForm(EMPTY_PRICE);
@@ -296,7 +308,7 @@ export default function CustomersPage() {
     if (!confirm('ลบราคาเส้นทางนี้?')) return;
     const { error } = await supabase.from('route_prices').update({ deleted_at: new Date().toISOString() }).eq('id', id);
     if (error) {
-      alert('ลบไม่สำเร็จ: ' + error.message);
+      alert('ลบไม่สำเร็จ: ' + friendlyDbError(error));
       return;
     }
     loadPrices();
@@ -306,10 +318,10 @@ export default function CustomersPage() {
   const fp = (k: keyof typeof payForm, v: string) => setPayForm(p => ({ ...p, [k]: v }));
   const fpr = (k: keyof typeof priceForm, v: string) => setPriceForm(p => ({ ...p, [k]: v }));
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayBangkok();
   const totalWaiting = customers.reduce((s, c) => s + c.waitingAmount, 0);
   const totalOverdue = customers.reduce((s, c) => s + c.overdueAmount, 0);
-  const totalPaid30 = payments.filter(p => p.payment_date >= new Date(Date.now() - 30*24*3600*1000).toISOString().slice(0,10))
+  const totalPaid30 = payments.filter(p => p.payment_date >= todayBangkok(-30))
     .reduce((s, p) => s + p.amount, 0);
 
   return (
@@ -512,7 +524,7 @@ export default function CustomersPage() {
                 <span className="text-xs font-semibold text-slate-500 uppercase">รับแล้ว 30 วัน</span>
               </div>
               <div className="text-2xl font-bold text-green-700">{formatCurrency(totalPaid30)}</div>
-              <div className="text-xs text-slate-400 mt-0.5">{payments.filter(p => p.payment_date >= new Date(Date.now() - 30*24*3600*1000).toISOString().slice(0,10)).length} รายการ</div>
+              <div className="text-xs text-slate-400 mt-0.5">{payments.filter(p => p.payment_date >= todayBangkok(-30)).length} รายการ</div>
             </div>
           </div>
 
@@ -545,7 +557,7 @@ export default function CustomersPage() {
                       </div>
                       <button
                         onClick={() => {
-                          setPayForm({ ...EMPTY_PAYMENT, job_id: j.id, amount: String(j.selling_price), customer_id: j.customer_id || '' });
+                          setPayForm({ ...EMPTY_PAYMENT, payment_date: todayBangkok(), job_id: j.id, amount: String(j.selling_price), customer_id: j.customer_id || '' });
                           setPayError('');
                           setShowPayForm(true);
                         }}

@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { pushMessage } from '@/lib/line/client';
+import { todayBangkok } from '@/lib/dateTh';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const supabase = getServiceClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayBangkok();
 
   // Load settings
   const { data: settings } = await supabase.from('app_settings')

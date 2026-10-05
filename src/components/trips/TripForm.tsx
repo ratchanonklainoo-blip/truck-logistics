@@ -11,6 +11,7 @@ import {
 import type { TripFormData, Driver } from '@/types';
 import { calcCommission, calcDistance, safeNumber, compressImage } from '@/lib/utils';
 import { COMMISSION_RATE } from '@/lib/constants';
+import { todayBangkok } from '@/lib/dateTh';
 
 // ── Zod schema ──────────────────────────────────────────────
 const tripSchema = z.object({
@@ -60,7 +61,7 @@ export default function TripForm({
     useForm<TripSchema>({
       resolver: zodResolver(tripSchema),
       defaultValues: {
-        date:            new Date().toISOString().split('T')[0],
+        date:            todayBangkok(),
         driver_id:       selectedDriverId,
         origin:          '',
         destination:     '',
@@ -106,7 +107,7 @@ export default function TripForm({
       });
     } else {
       reset({
-        date:            new Date().toISOString().split('T')[0],
+        date:            todayBangkok(),
         driver_id:       selectedDriverId,
         origin:          '', destination: '', product: '', weight: '',
         transport_price: 0, trip_pay: 0,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { todayBangkok } from '@/lib/dateTh';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       category, description,
       amount: Number(amount),
       receipt_url: receipt_url || null,
-      date: date || new Date().toISOString().slice(0, 10),
+      date: date || todayBangkok(),
       recorded_by: user.id,
     })
     .select().single();

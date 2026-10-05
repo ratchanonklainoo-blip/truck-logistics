@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Receipt, Plus, RefreshCw, Filter, Trash2, X } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { todayBangkok } from '@/lib/dateTh';
 
 interface Driver { id: string; name: string; nickname: string; }
 interface Expense {
@@ -207,7 +208,7 @@ function CreateExpenseModal({ drivers, onClose, onCreated }:
   { drivers: Driver[]; onClose: () => void; onCreated: () => void; }) {
   const [form, setForm] = useState({
     driver_id: '', category: 'fuel', description: '', amount: '',
-    date: new Date().toISOString().slice(0, 10),
+    date: todayBangkok(),
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');

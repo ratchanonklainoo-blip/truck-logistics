@@ -12,6 +12,7 @@ import {
 import { formatCurrency } from '@/lib/utils';
 import CoordPasteInput from '@/components/ui/CoordPasteInput';
 import RecurringTripsModal from '@/components/jobs/RecurringTripsModal';
+import { todayBangkok } from '@/lib/dateTh';
 
 interface Driver { id: string; name: string; nickname: string; license_plate: string; }
 interface Customer { id: string; name: string; payment_type: string; }
@@ -51,7 +52,7 @@ const NEXT_LABEL: Record<string, string> = {
 };
 const SOURCE_LABEL: Record<string, string> = { bank: 'Bank', mother: 'Mother', driver: 'คนขับ', ai: 'AI' };
 
-function getToday() { return new Date().toISOString().slice(0, 10); }
+function getToday() { return todayBangkok(); }
 function getMonthStart() {
   const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
 }
