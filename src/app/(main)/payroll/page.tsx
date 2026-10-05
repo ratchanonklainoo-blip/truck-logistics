@@ -138,7 +138,9 @@ export default function PayrollPage() {
     setDetailLoading(payroll.id);
     const [y, m] = payroll.month_year.split('-').map(Number);
     const dateFrom = `${y}-${String(m).padStart(2, '0')}-01`;
-    const dateTo   = new Date(y, m, 0).toISOString().slice(0, 10);
+    // วันสิ้นเดือนต้องประกอบเป็นข้อความเอง — toISOString() เป็น UTC ทำให้ใน UTC+7 ถอยไปวันก่อนหน้า (เที่ยววันสิ้นเดือนหาย)
+    const lastDay  = new Date(y, m, 0).getDate();
+    const dateTo   = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
     const [{ data: trips }, { data: advances }] = await Promise.all([
       supabase.from('trips')
