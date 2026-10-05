@@ -498,6 +498,7 @@ export default function PayrollPage() {
                               <Truck className="w-3.5 h-3.5" /> เที่ยววิ่ง ({p.trips.length} รายการ)
                             </h4>
                             <div className="rounded-lg border border-slate-200 overflow-hidden">
+                              <div className="overflow-x-auto">
                               <table className="w-full text-xs">
                                 <thead className="bg-slate-50">
                                   <tr>
@@ -526,6 +527,7 @@ export default function PayrollPage() {
                                   </tr>
                                 </tfoot>
                               </table>
+                              </div>
                             </div>
                           </div>
                         )}
@@ -537,6 +539,7 @@ export default function PayrollPage() {
                               <CreditCard className="w-3.5 h-3.5" /> เบิกล่วงหน้า ({p.advances.length} รายการ)
                             </h4>
                             <div className="rounded-lg border border-slate-200 overflow-hidden">
+                              <div className="overflow-x-auto">
                               <table className="w-full text-xs">
                                 <thead className="bg-slate-50">
                                   <tr>
@@ -561,6 +564,7 @@ export default function PayrollPage() {
                                   </tr>
                                 </tfoot>
                               </table>
+                              </div>
                             </div>
                           </div>
                         )}

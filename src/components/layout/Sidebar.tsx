@@ -9,7 +9,7 @@ import {
   Truck, LayoutDashboard, ClipboardList,
   Users, Fuel, MapPin, UserCheck,
   Bell, Settings, LogOut, Navigation,
-  Wallet, ChevronRight, Ship, FileText, BarChart3, Printer,
+  Wallet, ChevronRight, Ship, FileText, BarChart3, Printer, Menu, X,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
@@ -51,6 +51,15 @@ export default function Sidebar({ userEmail }: SidebarProps) {
   const [supabase] = useState(() => createClient());
   const [loggingOut, setLoggingOut] = useState(false);
   const [badges, setBadges] = useState<Badges>({ advances: 0, fuel: 0, alerts: 0, jobs: 0 });
+  // มือถือ/แท็บเล็ต (< lg): sidebar เป็น drawer เปิดด้วยปุ่ม hamburger ; จอใหญ่แสดงตลอดเหมือนเดิม
+  const [mobileOpen, setMobileOpen] = useState(false);
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMobileOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mobileOpen]);
 
   const loadBadges = async () => {
     const [advRes, fuelRes, alertRes, jobRes] = await Promise.all([
@@ -90,7 +99,22 @@ export default function Sidebar({ userEmail }: SidebarProps) {
   };
 
   return (
-    <aside className="fixed inset-y-0 left-0 w-64 flex flex-col"
+    <>
+    {/* แถบบนสำหรับจอเล็ก */}
+    <div className="lg:hidden fixed top-0 inset-x-0 z-40 h-14 flex items-center gap-2 px-2 shadow-md"
+         style={{ backgroundColor: '#1E3A5F' }}>
+      <button type="button" onClick={() => setMobileOpen(true)} aria-label="เปิดเมนู"
+              aria-expanded={mobileOpen}
+              className="w-11 h-11 flex items-center justify-center rounded-lg text-white hover:bg-white/10">
+        <Menu className="w-6 h-6" />
+      </button>
+      <p className="text-white font-semibold text-sm truncate">{COMPANY.name}</p>
+    </div>
+    {mobileOpen && (
+      <div className="lg:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setMobileOpen(false)} aria-hidden="true" />
+    )}
+    <aside className={`fixed inset-y-0 left-0 z-50 w-64 max-w-[85vw] flex flex-col transition-transform duration-200
+                       lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}
            style={{ backgroundColor: '#1E3A5F' }}>
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-white/10">
@@ -101,6 +125,10 @@ export default function Sidebar({ userEmail }: SidebarProps) {
           <p className="text-white font-semibold text-sm leading-tight truncate">{COMPANY.name}</p>
           <p className="text-slate-400 text-xs">Logistics OS v2.0</p>
         </div>
+        <button type="button" onClick={() => setMobileOpen(false)} aria-label="ปิดเมนู"
+                className="lg:hidden ml-auto w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-lg text-slate-300 hover:bg-white/10">
+          <X className="w-5 h-5" />
+        </button>
       </div>
 
       {/* Nav */}
@@ -114,7 +142,7 @@ export default function Sidebar({ userEmail }: SidebarProps) {
             <Link
               key={href}
               href={available ? href : '#'}
-              className={`sidebar-link ${isActive ? 'active' : ''} ${!available ? 'opacity-40 cursor-not-allowed' : ''}`}
+              className={`sidebar-link min-h-[44px] lg:min-h-0 ${isActive ? 'active' : ''} ${!available ? 'opacity-40 cursor-not-allowed' : ''}`}
               onClick={e => { if (!available) e.preventDefault(); }}
             >
               <Icon className="w-4 h-4 flex-shrink-0" />
@@ -141,11 +169,12 @@ export default function Sidebar({ userEmail }: SidebarProps) {
         <button
           onClick={handleLogout}
           disabled={loggingOut}
-          className="sidebar-link w-full text-left text-red-300 hover:bg-red-500/20 hover:text-red-200"
+          className="sidebar-link min-h-[44px] lg:min-h-0 w-full text-left text-red-300 hover:bg-red-500/20 hover:text-red-200"
         >
           <LogOut className="w-4 h-4" /><span>{loggingOut ? 'กำลังออก...' : 'ออกจากระบบ'}</span>
         </button>
       </div>
     </aside>
+    </>
   );
 }

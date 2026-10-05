@@ -874,6 +874,7 @@ export default function ReportsPage() {
                   <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
                     <span className="font-semibold text-slate-700 text-sm">ค่าใช้จ่ายประจำเดือน</span>
                   </div>
+                  <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-slate-700 text-white text-xs">
@@ -925,6 +926,7 @@ export default function ReportsPage() {
                       </tr>
                     </tfoot>
                   </table>
+                  </div>
                 </div>
 
                 {/* Grand total summary box */}
@@ -999,6 +1001,7 @@ export default function ReportsPage() {
               {fixedList.length === 0 ? (
                 <div className="text-center py-16 text-slate-400">ยังไม่มีรายการค่าใช้จ่ายประจำ</div>
               ) : (
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200">
@@ -1076,6 +1079,7 @@ export default function ReportsPage() {
                     </tr>
                   </tfoot>
                 </table>
+                </div>
               )}
             </div>
           )}

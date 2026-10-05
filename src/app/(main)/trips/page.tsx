@@ -784,6 +784,7 @@ export default function TripsPage() {
                 <p>ไม่พบรายการค่าใช้จ่าย</p>
               </div>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
@@ -829,6 +830,7 @@ export default function TripsPage() {
                   </tr>
                 </tfoot>
               </table>
+              </div>
             )}
           </div>
         </div>
@@ -943,40 +945,42 @@ export default function TripsPage() {
                   <p>กรุณาเลือกไฟล์ CSV</p>
                 </div>
               ) : (
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-100 text-slate-600">
-                      {['สถานะ','วันที่','สินค้า','ต้นทาง','ปลายทาง','ไมล์ต้น','ไมล์ปลาย','ค่าขนส่ง','ค่าเที่ยว','น้ำมัน','หมายเหตุ'].map(h => (
-                        <th key={h} className="px-2 py-2 text-left border border-slate-200">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {importRows.map((row, i) => (
-                      <tr key={i} className={row.errors.length > 0 ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                        <td className="px-2 py-1.5 border border-slate-200">
-                          {row.errors.length === 0
-                            ? <CheckCircle2 className="w-4 h-4 text-green-500" />
-                            : <div className="flex items-start gap-1">
-                                <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                                <span className="text-red-600 leading-tight">{row.errors.join(', ')}</span>
-                              </div>
-                          }
-                        </td>
-                        <td className="px-2 py-1.5 border border-slate-200">{row.date || row.raw[0]}</td>
-                        <td className="px-2 py-1.5 border border-slate-200">{row.product}</td>
-                        <td className="px-2 py-1.5 border border-slate-200">{row.origin}</td>
-                        <td className="px-2 py-1.5 border border-slate-200">{row.destination}</td>
-                        <td className="px-2 py-1.5 border border-slate-200 text-right">{row.odometer_start.toLocaleString()}</td>
-                        <td className="px-2 py-1.5 border border-slate-200 text-right">{row.odometer_end.toLocaleString()}</td>
-                        <td className="px-2 py-1.5 border border-slate-200 text-right">{row.transport_price.toLocaleString()}</td>
-                        <td className="px-2 py-1.5 border border-slate-200 text-right">{row.trip_pay.toLocaleString()}</td>
-                        <td className="px-2 py-1.5 border border-slate-200 text-right">{row.fuel_cost.toLocaleString()}</td>
-                        <td className="px-2 py-1.5 border border-slate-200">{row.remarks}</td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-600">
+                        {['สถานะ','วันที่','สินค้า','ต้นทาง','ปลายทาง','ไมล์ต้น','ไมล์ปลาย','ค่าขนส่ง','ค่าเที่ยว','น้ำมัน','หมายเหตุ'].map(h => (
+                          <th key={h} className="px-2 py-2 text-left border border-slate-200">{h}</th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {importRows.map((row, i) => (
+                        <tr key={i} className={row.errors.length > 0 ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                          <td className="px-2 py-1.5 border border-slate-200">
+                            {row.errors.length === 0
+                              ? <CheckCircle2 className="w-4 h-4 text-green-500" />
+                              : <div className="flex items-start gap-1">
+                                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                                  <span className="text-red-600 leading-tight">{row.errors.join(', ')}</span>
+                                </div>
+                            }
+                          </td>
+                          <td className="px-2 py-1.5 border border-slate-200">{row.date || row.raw[0]}</td>
+                          <td className="px-2 py-1.5 border border-slate-200">{row.product}</td>
+                          <td className="px-2 py-1.5 border border-slate-200">{row.origin}</td>
+                          <td className="px-2 py-1.5 border border-slate-200">{row.destination}</td>
+                          <td className="px-2 py-1.5 border border-slate-200 text-right">{row.odometer_start.toLocaleString()}</td>
+                          <td className="px-2 py-1.5 border border-slate-200 text-right">{row.odometer_end.toLocaleString()}</td>
+                          <td className="px-2 py-1.5 border border-slate-200 text-right">{row.transport_price.toLocaleString()}</td>
+                          <td className="px-2 py-1.5 border border-slate-200 text-right">{row.trip_pay.toLocaleString()}</td>
+                          <td className="px-2 py-1.5 border border-slate-200 text-right">{row.fuel_cost.toLocaleString()}</td>
+                          <td className="px-2 py-1.5 border border-slate-200">{row.remarks}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
 

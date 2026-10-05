@@ -183,6 +183,7 @@ export default function AdvancesPage() {
             ไม่พบรายการเบิกเงิน
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
@@ -262,6 +263,7 @@ export default function AdvancesPage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

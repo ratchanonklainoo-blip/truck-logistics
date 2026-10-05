@@ -20,8 +20,8 @@ export default async function MainLayout({
       <aside className="print:hidden">
         <Sidebar userEmail={user.email} />
       </aside>
-      {/* Main content — full width when printing */}
-      <main className="flex-1 ml-64 min-h-screen overflow-x-hidden print:ml-0 print:w-full">
+      {/* Main content — จอเล็กเต็มความกว้าง (มีแถบบน 56px), lg ขึ้นไปเว้นที่ให้ sidebar ; ตอนพิมพ์เต็มความกว้าง */}
+      <main className="flex-1 min-w-0 pt-14 lg:pt-0 lg:ml-64 min-h-screen overflow-x-hidden print:ml-0 print:pt-0 print:w-full">
         {children}
       </main>
     </div>

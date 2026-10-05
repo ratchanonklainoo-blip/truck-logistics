@@ -153,6 +153,7 @@ export default function ExpensesPage() {
             ไม่พบรายการค่าใช้จ่าย
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
@@ -190,6 +191,7 @@ export default function ExpensesPage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

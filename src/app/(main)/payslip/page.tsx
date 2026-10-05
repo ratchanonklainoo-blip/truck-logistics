@@ -298,8 +298,9 @@ function PayslipContent() {
       </div>
 
       {/* A4 Preview */}
-      <div className="flex justify-center">
-        <div className="shadow-2xl">
+      {/* มือถือ: เลื่อนแนวนอนในกรอบ (A4 กว้าง 794px) ; จอกว้าง: อยู่กลางเหมือนเดิม */}
+      <div className="overflow-x-auto print:overflow-visible">
+        <div className="shadow-2xl w-fit mx-auto">
           {/*
             ── PDF FIX NOTES ──────────────────────────────────────────
             1. COMPANY.name ดึงจาก constant เสมอ — ไม่ใช่ state ที่แก้ได้
