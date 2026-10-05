@@ -34,7 +34,7 @@ const EMPTY_FORM = {
   driver_key: '', name: '', nickname: '', license_plate: '',
   bank_account: '', social_security: '750', base_salary: '5000',
   commission_rate: '0.10', monthly_advance_limit: '5000',
-  line_user_id: '', phone: '',
+  line_user_id: '', phone: '', start_date: '',
 };
 
 // สร้างรหัสคนขับ DR001, DR002, ... ตัวถัดไปที่ยังไม่มีใครใช้ (เทียบแบบไม่สนตัวพิมพ์เล็ก/ใหญ่ รวมคนขับที่ถูกลบ เพราะ UNIQUE ครอบทุกแถว)
@@ -142,6 +142,7 @@ export default function DriversPage() {
       commission_rate: Number(form.commission_rate) || 0.10,
       monthly_advance_limit: form.monthly_advance_limit === '' ? 0 : Number(form.monthly_advance_limit),
       line_user_id: form.line_user_id || null,
+      start_date: form.start_date || null,
       updated_at: new Date().toISOString(),
     };
     try {
@@ -207,6 +208,7 @@ export default function DriversPage() {
       monthly_advance_limit: String(d.monthly_advance_limit || 5000),
       line_user_id: d.line_user_id || '',
       phone: '',
+      start_date: d.start_date || '',
     });
     setShowForm(true);
   };
@@ -517,6 +519,16 @@ export default function DriversPage() {
                       onChange={e => f('monthly_advance_limit', e.target.value)} />
                   </div>
                 </div>
+              </div>
+
+              {/* วันเริ่มงาน */}
+              <div>
+                <label className="form-label">วันเริ่มงาน</label>
+                <input type="date" className="form-input" value={form.start_date}
+                  onChange={e => f('start_date', e.target.value)} />
+                <p className="text-xs text-slate-400 mt-1">
+                  เริ่มหลังวันที่ 1 → เดือนแรกไม่มีเงินเดือนฐานและไม่หักประกันสังคม (ได้ค่าเที่ยวตามจริง) · เว้นว่าง = ฐานเต็มทุกเดือน
+                </p>
               </div>
 
               {saveError && (

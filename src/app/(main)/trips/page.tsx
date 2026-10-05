@@ -23,7 +23,7 @@ import {
 } from '@/lib/utils';
 import { todayBangkok, nextMonthStart } from '@/lib/dateTh';
 import { fetchAllRows } from '@/lib/fetchAll';
-import { sumTripPay } from '@/lib/payrollCalc';
+import { sumTripPay, baseForMonth } from '@/lib/payrollCalc';
 
 // แปลง error จาก Supabase เป็นข้อความไทยที่ผู้ใช้อ่านเข้าใจ
 function friendlySaveError(err: { message?: string; code?: string }): string {
@@ -181,13 +181,14 @@ export default function TripsPage() {
 
   const driverNetPay = useMemo(() => {
     if (!selectedDriver) return 0;
+    const base = baseForMonth(selectedDriver, monthYm); // เริ่มกลางเดือน = ไม่มีฐาน/ประกันสังคม
     return calcNetPay(
       driverTotals.trip_pay,
-      selectedDriver.base_salary,
+      base.base_salary,
       driverTotals.withdraw,
-      selectedDriver.social_security,
+      base.social_security,
     );
-  }, [driverTotals, selectedDriver]);
+  }, [driverTotals, selectedDriver, monthYm]);
 
   const avgEfficiency = calcFuelEfficiency(driverTotals.distance, driverTotals.fuel_litres);
 

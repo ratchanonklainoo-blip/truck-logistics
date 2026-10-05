@@ -16,6 +16,7 @@ import {
 } from '@/lib/utils';
 import { nextMonthStart } from '@/lib/dateTh';
 import { fetchAllRows } from '@/lib/fetchAll';
+import { baseForMonth } from '@/lib/payrollCalc';
 
 // ── PDF fix: company name is ALWAYS pulled from COMPANY.name constant
 // ── Font sizes: 22px for header, 13px minimum for content
@@ -145,8 +146,10 @@ function PayslipContent() {
 
   const totals = useMemo(() => calculateTotals(driverTrips), [driverTrips]);
 
-  const salary        = selectedDriver?.base_salary ?? 0;
-  const socialSec     = selectedDriver?.social_security || 0;
+  // ฐาน/ประกันสังคมตามเดือน (สูตรเดียวกับใบเงินเดือน): เริ่มกลางเดือน = 0
+  const monthBase     = selectedDriver ? baseForMonth(selectedDriver, monthYm) : { base_salary: 0, social_security: 0 };
+  const salary        = monthBase.base_salary;
+  const socialSec     = monthBase.social_security;
   const grossIncome   = totals.trip_pay + salary;
   const netPay        = calcNetPay(totals.trip_pay, salary, totals.withdraw, socialSec);
   const monthLabel    = getThaiMonthLabel(monthFilter);

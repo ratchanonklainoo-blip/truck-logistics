@@ -13,6 +13,8 @@ export interface Driver {
   line_user_id: string | null;
   monthly_advance_limit: number;
   is_active: boolean;
+  start_date?: string | null; // วันเริ่มงาน (migration 022) — เริ่มหลังวันที่ 1 ของเดือน เดือนนั้นไม่มีเงินฐาน
+  end_date?: string | null;   // วันทำงานวันสุดท้าย ตั้งตอนปิดใช้งาน
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
