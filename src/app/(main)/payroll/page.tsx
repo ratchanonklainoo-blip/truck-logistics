@@ -175,7 +175,10 @@ export default function PayrollPage() {
     if (!confirm(`คำนวณเงินเดือนเดือน ${formatMonthYear(selectedMonth)} สำหรับคนขับทั้งหมด?`)) return;
     setGenerating(true);
     try {
+      // ข้ามใบที่อนุมัติ/จ่ายแล้ว — API จะตอบ 409 อยู่แล้ว แต่ไม่ต้องยิงให้เสียเที่ยว
+      const lockedIds = new Set(payrolls.filter(p => p.status !== 'draft').map(p => p.driver_id));
       for (const driver of drivers) {
+        if (lockedIds.has(driver.id)) continue;
         await fetch('/api/payroll', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -188,11 +191,15 @@ export default function PayrollPage() {
 
   const recalcOne = async (p: Payroll) => {
     setActionLoading(p.id + '-recalc');
-    await fetch('/api/payroll', {
+    const res = await fetch('/api/payroll', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ driver_id: p.driver_id, month_year: selectedMonth }),
     });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(j.error || 'คำนวณใหม่ไม่สำเร็จ');
+    }
     setPayrolls(prev => prev.map(x => x.id === p.id ? { ...x, trips: undefined, advances: undefined } : x));
     await loadData();
     setActionLoading(null);
@@ -446,14 +453,16 @@ export default function PayrollPage() {
                                   จ่ายเมื่อ {formatShortDate(p.paid_at)}
                                 </div>
                               )}
-                              <button
-                                onClick={() => recalcOne(p)}
-                                disabled={actionLoading === p.id + '-recalc'}
-                                className="w-full flex items-center justify-center gap-1.5 bg-white/10 hover:bg-white/20 text-white/80 text-xs py-1.5 rounded-lg transition-colors"
-                              >
-                                <RotateCcw className="w-3 h-3" />
-                                คำนวณใหม่
-                              </button>
+                              {p.status === 'draft' && (
+                                <button
+                                  onClick={() => recalcOne(p)}
+                                  disabled={actionLoading === p.id + '-recalc'}
+                                  className="w-full flex items-center justify-center gap-1.5 bg-white/10 hover:bg-white/20 text-white/80 text-xs py-1.5 rounded-lg transition-colors"
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                  คำนวณใหม่
+                                </button>
+                              )}
                               <button
                                 onClick={() => router.push(`/payslip?driver=${p.driver_id}&month=${p.month_year}`)}
                                 className="w-full flex items-center justify-center gap-1.5 bg-white/10 hover:bg-white/20 text-white/80 text-xs py-1.5 rounded-lg transition-colors"

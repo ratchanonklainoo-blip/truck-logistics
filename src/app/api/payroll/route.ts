@@ -60,6 +60,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     .from('drivers').select('*').eq('id', driver_id).single();
   if (!driver) return NextResponse.json({ error: 'Driver not found' }, { status: 404 });
 
+  // ห้ามคำนวณทับใบที่อนุมัติ/จ่ายแล้ว (upsert จะรีเซ็ตสถานะกลับเป็น draft และเขียนตัวเลขทับ)
+  const { data: existing, error: existingErr } = await supabase
+    .from('payrolls').select('status')
+    .eq('driver_id', driver_id).eq('month_year', month_year).is('deleted_at', null)
+    .maybeSingle();
+  if (existingErr) return NextResponse.json({ error: existingErr.message }, { status: 500 });
+  if (existing && existing.status !== 'draft') {
+    return NextResponse.json({
+      error: `ใบเงินเดือนเดือนนี้${existing.status === 'paid' ? 'จ่ายแล้ว' : 'อนุมัติแล้ว'} คำนวณใหม่ไม่ได้`,
+      code: 'PAYROLL_LOCKED',
+    }, { status: 409 });
+  }
+
   const [yearStr, monthStr] = month_year.split('-');
   const dateFrom = `${yearStr}-${monthStr}-01`;
   const lastDay = new Date(Number(yearStr), Number(monthStr), 0).getDate();
