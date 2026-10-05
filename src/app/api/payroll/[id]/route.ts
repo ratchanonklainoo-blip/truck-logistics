@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { computePayroll } from '@/lib/payrollServer';
+import { payrollChangedFields } from '@/lib/payrollCalc';
 
 export const dynamic = 'force-dynamic';
 type Params = { params: Promise<{ id: string }> };
@@ -14,15 +16,32 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
   const { action, ...rest } = body;
 
   const { data: payroll } = await supabase.from('payrolls')
-    .select('status, base_salary, total_commission, total_advance, social_security')
+    .select('*')
     .eq('id', id).is('deleted_at', null).single();
   if (!payroll) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   if (action === 'approve') {
     if (payroll.status !== 'draft') return NextResponse.json({ error: 'อนุมัติได้เฉพาะใบที่เป็นร่าง' }, { status: 409 });
+    // คำนวณใหม่ก่อนอนุมัติ: ถ้าเที่ยว/เบิก/เงินฐานเปลี่ยนหลังคำนวณล่าสุด ให้อัปเดตใบร่างแล้วให้ผู้ใช้ตรวจยอดใหม่ก่อนกดอนุมัติอีกครั้ง
+    // (ไม่ล็อกใบด้วยตัวเลขเก่า — เคส เอก พ.ค. ที่เบิก 3,600 ไม่ถูกหัก)
+    const fresh = await computePayroll(supabase, payroll.driver_id, payroll.month_year, {
+      other_additions: payroll.other_additions, other_deductions: payroll.other_deductions,
+    });
+    if (!fresh.ok) return NextResponse.json({ error: fresh.error, code: fresh.code }, { status: fresh.status });
+    const changed = payrollChangedFields(payroll, fresh.numbers);
+    if (changed.length > 0) {
+      const { data, error } = await supabase.from('payrolls')
+        .update(fresh.numbers).eq('id', id).eq('status', 'draft').select().single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 2 });
+      return NextResponse.json({
+        error: `ยอดเปลี่ยนจากที่คำนวณไว้ (มีการแก้เที่ยว/เบิก/เงินเดือนหลังคำนวณ) ระบบคำนวณใหม่แล้ว: สุทธิ ${fmt(Number(payroll.net_pay))} → ${fmt(fresh.numbers.net_pay)} บาท กรุณาตรวจยอดแล้วกดอนุมัติอีกครั้ง`,
+        code: 'PAYROLL_RECALCULATED', changed, data,
+      }, { status: 409 });
+    }
     const { data, error } = await supabase.from('payrolls')
       .update({ status: 'approved', approved_by: user.id, approved_at: new Date().toISOString() })
-      .eq('id', id).select().single();
+      .eq('id', id).eq('status', 'draft').select().single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ data });
   }

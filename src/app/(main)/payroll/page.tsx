@@ -220,6 +220,11 @@ export default function PayrollPage() {
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         alert(j.error || 'บันทึกไม่สำเร็จ กรุณาลองใหม่');
+        // อนุมัติแล้วพบยอดเปลี่ยน → server คำนวณใบร่างใหม่ให้แล้ว โหลดยอดใหม่มาให้ตรวจก่อนกดอนุมัติอีกครั้ง
+        if (j.code === 'PAYROLL_RECALCULATED') {
+          setPayrolls(prev => prev.map(x => x.id === p.id ? { ...x, trips: undefined, advances: undefined } : x));
+          await loadData();
+        }
         return;
       }
       await loadData();

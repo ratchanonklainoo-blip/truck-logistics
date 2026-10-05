@@ -1,15 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { countRealTrips } from '@/lib/tripCount';
+import { computePayroll } from '@/lib/payrollServer';
 
 export const dynamic = 'force-dynamic';
-
-// Floor to nearest 10 for positive numbers only (NEVER round up)
-// Negative balances (driver owes back) kept exact
-function floorTen(n: number): number {
-  if (n < 0) return n;
-  return Math.floor(n / 10) * 10;
-}
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const supabase = await createClient();
@@ -53,17 +46,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const body = await req.json();
   const { driver_id, month_year } = body;
 
-  if (!driver_id || !month_year) {
+  if (!driver_id || !month_year || !/^\d{4}-\d{2}$/.test(month_year)) {
     return NextResponse.json({ error: 'driver_id and month_year required' }, { status: 400 });
   }
 
-  const { data: driver } = await supabase
-    .from('drivers').select('*').eq('id', driver_id).single();
-  if (!driver) return NextResponse.json({ error: 'Driver not found' }, { status: 404 });
-
   // ห้ามคำนวณทับใบที่อนุมัติ/จ่ายแล้ว (upsert จะรีเซ็ตสถานะกลับเป็น draft และเขียนตัวเลขทับ)
   const { data: existing, error: existingErr } = await supabase
-    .from('payrolls').select('status')
+    .from('payrolls').select('status, other_additions, other_deductions')
     .eq('driver_id', driver_id).eq('month_year', month_year).is('deleted_at', null)
     .maybeSingle();
   if (existingErr) return NextResponse.json({ error: existingErr.message }, { status: 500 });
@@ -74,68 +63,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }, { status: 409 });
   }
 
-  const [yearStr, monthStr] = month_year.split('-');
-  const dateFrom = `${yearStr}-${monthStr}-01`;
-  const lastDay = new Date(Number(yearStr), Number(monthStr), 0).getDate();
-  const dateTo = `${yearStr}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
-
-  const { data: trips } = await supabase
-    .from('trips')
-    .select('origin, destination, transport_price, trip_pay, distance, fuel_litres, withdraw')
-    .eq('driver_id', driver_id)
-    .gte('date', dateFrom)
-    .lte('date', dateTo)
-    .is('deleted_at', null);
-
-  const { data: advances } = await supabase
-    .from('advance_requests')
-    .select('amount')
-    .eq('driver_id', driver_id)
-    .eq('month_year', month_year)
-    .in('status', ['approved', 'paid'])
-    .is('deleted_at', null);
-
-  const tripList = trips || [];
-  const advanceList = advances || [];
-
-  const totalCommission = tripList.reduce((s, t) => {
-    return s + (t.trip_pay != null ? t.trip_pay : t.transport_price * 0.10);
-  }, 0);
-  // Use trips.withdraw (actual cash withdrawn per trip) as the deduction source
-  // advance_requests are tracked separately for approval flow
-  const totalWithdrawFromTrips = tripList.reduce((s, t) => s + (t.withdraw || 0), 0);
-  const totalAdvanceRequests = advanceList.reduce((s, a) => s + a.amount, 0);
-  // Prefer trips.withdraw if > 0, otherwise fall back to advance_requests
-  const totalAdvance = totalWithdrawFromTrips > 0 ? totalWithdrawFromTrips : totalAdvanceRequests;
-  const totalDistance = tripList.reduce((s, t) => s + (t.distance || 0), 0);
-  const tripCount = countRealTrips(tripList); // แถว '-'→'-' ไม่นับเป็นเที่ยว (เงินยังนับตามเดิม)
-
-  const baseSalary = driver.base_salary || 0;
-  const socialSecurity = driver.social_security || 0;
-
-  const grossPay = baseSalary + totalCommission;
-  const netPayRaw = grossPay - totalAdvance - socialSecurity;
-  // Do NOT floor net_pay — store exact calculated value
-  const netPay = Math.round(netPayRaw * 100) / 100;
+  // สูตรกลาง (lib/payrollCalc): ฐาน + ค่าเที่ยว + รายได้อื่น − เบิก(trips.withdraw) − ประกันสังคม − หักอื่น
+  // คงรายได้อื่น/รายการหักอื่นของใบเดิมไว้ (เดิมตั้งเป็น 0 ทุกครั้งที่คำนวณใหม่)
+  const fresh = await computePayroll(supabase, driver_id, month_year, {
+    other_additions: existing?.other_additions, other_deductions: existing?.other_deductions,
+  });
+  if (!fresh.ok) return NextResponse.json({ error: fresh.error, code: fresh.code }, { status: fresh.status });
 
   const { data, error } = await supabase
     .from('payrolls')
     .upsert(
-      {
-        driver_id,
-        month_year,
-        base_salary: baseSalary,
-        total_commission: Math.round(totalCommission * 100) / 100,
-        total_advance: totalAdvance,
-        social_security: socialSecurity,
-        other_deductions: 0,
-        other_additions: 0,
-        gross_pay: Math.round(grossPay * 100) / 100,
-        net_pay: netPay,
-        trip_count: tripCount,
-        total_distance: Math.round(totalDistance * 100) / 100,
-        status: 'draft',
-      },
+      { driver_id, month_year, ...fresh.numbers, status: 'draft' },
       { onConflict: 'driver_id,month_year' }
     )
     .select()
