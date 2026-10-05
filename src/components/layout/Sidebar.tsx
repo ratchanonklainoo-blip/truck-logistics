@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { COMPANY } from '@/lib/constants';
+import { isHiddenRoute } from '@/lib/hiddenFeatures';
 import {
   Truck, LayoutDashboard, ClipboardList,
   Users, Fuel, MapPin, UserCheck,
@@ -53,9 +54,9 @@ export default function Sidebar({ userEmail }: SidebarProps) {
 
   const loadBadges = async () => {
     const [advRes, fuelRes, alertRes, jobRes] = await Promise.all([
-      supabase.from('advance_requests').select('id', { count: 'exact', head: true })
+      isHiddenRoute('/advances') ? Promise.resolve({ count: 0 }) : supabase.from('advance_requests').select('id', { count: 'exact', head: true })
         .eq('status', 'pending').is('deleted_at', null),
-      supabase.from('fuel_events').select('id', { count: 'exact', head: true })
+      isHiddenRoute('/fuel') ? Promise.resolve({ count: 0 }) : supabase.from('fuel_events').select('id', { count: 'exact', head: true })
         .in('status', ['waiting_approval', 'needs_review']).is('deleted_at', null),
       supabase.from('alerts').select('id', { count: 'exact', head: true })
         .eq('is_read', false),
@@ -104,7 +105,7 @@ export default function Sidebar({ userEmail }: SidebarProps) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-0.5">
-        {NAV_ITEMS.map(({ href, label, icon: Icon, badge }) => {
+        {NAV_ITEMS.filter(i => !isHiddenRoute(i.href)).map(({ href, label, icon: Icon, badge }) => {
           const isActive   = pathname === href || pathname.startsWith(href + '/');
           const available  = PHASE_AVAILABLE.has(href);
           const badgeCount = badge ? badges[badge] : 0;

@@ -1,5 +1,6 @@
 'use client';
 
+import { isHiddenRoute } from '@/lib/hiddenFeatures';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -142,7 +143,7 @@ export default function AlertsPage() {
                   </p>
                 </div>
                 <div className="flex-shrink-0 flex flex-col items-end gap-2 self-start mt-1">
-                  {tc.href && (
+                  {tc.href && !isHiddenRoute(tc.href) && (
                     <button
                       onClick={() => router.push(tc.href!)}
                       className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"

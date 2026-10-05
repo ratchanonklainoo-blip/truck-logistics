@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { isHiddenRoute } from './src/lib/hiddenFeatures';
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -25,6 +26,11 @@ export async function middleware(request: NextRequest) {
       },
     },
   );
+
+  // หน้าที่ซ่อน (fuel/advances) — ส่งกลับ dashboard
+  if (isHiddenRoute(request.nextUrl.pathname)) {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
+  }
 
   const { data: { user } } = await supabase.auth.getUser();
 
