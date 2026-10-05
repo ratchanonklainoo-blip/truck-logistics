@@ -98,7 +98,8 @@ export default function RecurringTripsModal({ drivers, onClose }: { drivers: Dri
     if (err) setError(`บันทึกแม่แบบแล้ว แต่${err}`);
   };
 
-  const call = async (url: string, method: string, payload?: unknown) => {
+  // passDuplicate: คืน body ของ 409 duplicate ให้ผู้เรียกถามยืนยันเอง (ไม่แสดงเป็น error)
+  const call = async (url: string, method: string, payload?: unknown, passDuplicate = false) => {
     setBusy(true); setError('');
     try {
       const res = await fetch(url, {
@@ -106,7 +107,10 @@ export default function RecurringTripsModal({ drivers, onClose }: { drivers: Dri
         body: payload ? JSON.stringify(payload) : undefined,
       });
       const body = await res.json();
-      if (!res.ok) { setError(body.error || 'เกิดข้อผิดพลาด'); return null; }
+      if (!res.ok) {
+        if (passDuplicate && res.status === 409 && body.duplicate) return body;
+        setError(body.error || 'เกิดข้อผิดพลาด'); return null;
+      }
       return body;
     } catch {
       setError('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบสัญญาณอินเทอร์เน็ตแล้วลองใหม่');
@@ -140,11 +144,17 @@ export default function RecurringTripsModal({ drivers, onClose }: { drivers: Dri
     if (use.trip_pay === '' || Number(use.trip_pay) < 0 || Number.isNaN(Number(use.trip_pay))) {
       setError('กรุณากรอกค่าเที่ยว (ตัวเลขไม่ติดลบ)'); return;
     }
-    const body = await call(`/api/recurring-routes/${selected.id}/trip`, 'POST', {
+    const url = `/api/recurring-routes/${selected.id}/trip`;
+    const payload = {
       date: use.date, driver_id: use.driver_id,
       transport_price: use.transport_price === '' ? 0 : Number(use.transport_price),
       trip_pay: Number(use.trip_pay),
-    });
+    };
+    let body = await call(url, 'POST', payload, true);
+    if (body?.duplicate) {
+      if (!confirm(`${body.error}\n\nต้องการเพิ่มซ้ำอีก 1 เที่ยวหรือไม่?`)) return;
+      body = await call(url, 'POST', { ...payload, confirm_duplicate: true });
+    }
     if (!body) return;
     const d = drivers.find(x => x.id === use.driver_id);
     setNotice(`เพิ่มเที่ยว ${selected.origin} → ${selected.destination} (${d?.license_plate || ''}) ลงหน้าเที่ยววิ่งแล้ว`);
