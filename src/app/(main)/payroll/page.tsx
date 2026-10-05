@@ -142,24 +142,24 @@ export default function PayrollPage() {
     const lastDay  = new Date(y, m, 0).getDate();
     const dateTo   = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-    const [{ data: trips }, { data: advances }] = await Promise.all([
-      supabase.from('trips')
-        .select('id,date,origin,destination,transport_price,trip_pay,distance,fuel_litres')
-        .eq('driver_id', payroll.driver_id)
-        .gte('date', dateFrom).lte('date', dateTo)
-        .is('deleted_at', null)
-        .order('date', { ascending: true }),
-      supabase.from('advance_requests')
-        .select('id,amount,reason,created_at,status')
-        .eq('driver_id', payroll.driver_id)
-        .eq('month_year', payroll.month_year)
-        .in('status', ['approved', 'paid'])
-        .is('deleted_at', null),
-    ]);
+    const { data: trips } = await supabase.from('trips')
+      .select('id,date,origin,destination,transport_price,trip_pay,distance,fuel_litres,withdraw,remarks')
+      .eq('driver_id', payroll.driver_id)
+      .gte('date', dateFrom).lte('date', dateTo)
+      .is('deleted_at', null)
+      .order('date', { ascending: true });
+    // เงินเบิกแหล่งเดียว = ช่องเบิกในเที่ยววิ่ง (trips.withdraw) ตรงกับยอดที่หักในใบเงินเดือน — ไม่ใช้ใบเบิก advance_requests
+    const advances: AdvanceRow[] = (trips || [])
+      .filter(t => Number(t.withdraw) > 0)
+      .map(t => ({
+        id: t.id, amount: Number(t.withdraw), created_at: t.date, status: 'trip',
+        reason: [t.origin, t.destination].every(x => !x || x.trim() === '-') ? (t.remarks || null)
+          : `${t.origin} → ${t.destination}${t.remarks ? ` (${t.remarks})` : ''}`,
+      }));
 
     setPayrolls(prev => prev.map(p =>
       p.id === payroll.id
-        ? { ...p, trips: (trips || []) as TripRow[], advances: (advances || []) as AdvanceRow[] }
+        ? { ...p, trips: (trips || []) as TripRow[], advances }
         : p
     ));
     setDetailLoading(null);
@@ -541,7 +541,7 @@ export default function PayrollPage() {
                         {p.advances && p.advances.length > 0 && (
                           <div>
                             <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                              <CreditCard className="w-3.5 h-3.5" /> เบิกล่วงหน้า ({p.advances.length} รายการ)
+                              <CreditCard className="w-3.5 h-3.5" /> เบิก/หักจากเที่ยววิ่ง ({p.advances.length} รายการ)
                             </h4>
                             <div className="rounded-lg border border-slate-200 overflow-hidden">
                               <div className="overflow-x-auto">
@@ -549,7 +549,7 @@ export default function PayrollPage() {
                                 <thead className="bg-slate-50">
                                   <tr>
                                     <th className="text-left px-3 py-2 text-slate-500 font-medium">วันที่</th>
-                                    <th className="text-left px-3 py-2 text-slate-500 font-medium">เหตุผล</th>
+                                    <th className="text-left px-3 py-2 text-slate-500 font-medium">เที่ยว/หมายเหตุ</th>
                                     <th className="text-right px-3 py-2 text-slate-500 font-medium">จำนวน</th>
                                   </tr>
                                 </thead>
