@@ -160,7 +160,10 @@ async function handleAdvanceCommand(
 
   const amountIdx = remaining.findIndex(p => /^\d+$/.test(p));
   if (amountIdx === -1) {
-    await upsertSession(lineUserId, driver.id, 'advance_waiting_data', {}, supabase);
+    if (!(await upsertSession(lineUserId, driver.id, 'advance_waiting_data', {}, supabase))) {
+      await replyMessage(replyToken, [{ type: 'text', text: SESSION_SAVE_FAILED_TEXT }]);
+      return;
+    }
     await replyMessage(replyToken, [{
       type: 'text',
       text: `💰 ขอเบิกเงิน — คนขับ: ${driver.nickname || driver.name}\n\nส่งจำนวนเงินและเหตุผล:\nเช่น: 2000 ค่าข้าว`,
@@ -203,7 +206,10 @@ async function handleFuelCommand(
     status: 'waiting_data',
   });
 
-  await upsertSession(lineUserId, driver.id, 'fuel_waiting_photos', {}, supabase);
+  if (!(await upsertSession(lineUserId, driver.id, 'fuel_waiting_photos', {}, supabase))) {
+    await replyMessage(replyToken, [{ type: 'text', text: SESSION_SAVE_FAILED_TEXT }]);
+    return;
+  }
 
   await replyMessage(replyToken, [{
     type: 'text',
@@ -378,16 +384,23 @@ async function getActiveSession(lineUserId: string, supabase: SupabaseClient): P
 async function upsertSession(
   lineUserId: string, driverId: string, state: string,
   data: Record<string, unknown>, supabase: SupabaseClient
-): Promise<void> {
+): Promise<boolean> {
   const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min
-  await supabase.from('line_sessions').upsert({
+  const { error } = await supabase.from('line_sessions').upsert({
     line_user_id: lineUserId,
     driver_id: driverId,
     state,
     data,
     expires_at: expiresAt,
   }, { onConflict: 'line_user_id' });
+  if (error) {
+    console.error('[LINE Webhook] upsertSession failed:', error.message);
+    return false;
+  }
+  return true;
 }
+
+const SESSION_SAVE_FAILED_TEXT = '❌ ระบบบันทึกสถานะการสนทนาไม่สำเร็จ กรุณาลองส่งคำสั่งใหม่อีกครั้ง';
 
 async function clearSession(sessionId: string, supabase: SupabaseClient): Promise<void> {
   await supabase.from('line_sessions').delete().eq('id', sessionId);
