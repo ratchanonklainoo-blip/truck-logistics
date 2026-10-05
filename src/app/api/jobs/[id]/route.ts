@@ -19,6 +19,13 @@ function validateCoords(rest: Record<string, unknown>): string | null {
 
 export const dynamic = 'force-dynamic';
 
+// ฟิลด์ที่ฟอร์มแก้ไขงานแก้ได้ — ไม่รับ deleted_at, job_number, closed_by/closed_at, status, created_by ฯลฯ จาก body
+const EDITABLE_FIELDS = [
+  'date', 'customer_id', 'origin', 'destination', 'product', 'weight_kg', 'selling_price',
+  'source', 'payment_type', 'payment_due_date', 'profit', 'notes',
+  'origin_lat', 'origin_lng', 'destination_lat', 'destination_lng',
+] as const;
+
 const VALID_TRANSITIONS: Record<string, string[]> = {
   new:             ['waiting_driver', 'assigned'], // จัดรถให้คนขับได้ทันทีโดยไม่ต้องผ่าน 'รอจัดรถ'
   waiting_driver:  ['assigned'],
@@ -44,7 +51,7 @@ export async function GET(_req: NextRequest, { params }: Params): Promise<NextRe
   if (!user) return NextResponse.json({ error: 'กรุณาเข้าสู่ระบบใหม่' }, { status: 401 });
 
   const { data: job, error } = await supabase
-    .from('jobs').select('*').eq('id', id).single();
+    .from('jobs').select('*').eq('id', id).is('deleted_at', null).maybeSingle();
   if (error || !job) return NextResponse.json({ error: 'ไม่พบงานนี้' }, { status: 404 });
 
   const [dr, cu] = await Promise.all([
@@ -69,7 +76,7 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
   const { action, status: newStatus, assigned_driver_id, notes, profit, ...rest } = body;
 
   const { data: job, error: fetchErr } = await supabase
-    .from('jobs').select('*').eq('id', id).single();
+    .from('jobs').select('*').eq('id', id).is('deleted_at', null).maybeSingle();
   if (fetchErr || !job) return NextResponse.json({ error: 'ไม่พบงานนี้' }, { status: 404 });
 
   // Status transition
@@ -95,8 +102,9 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
     }
 
     const { data, error } = await supabase
-      .from('jobs').update(update).eq('id', id).select().single();
+      .from('jobs').update(update).eq('id', id).is('deleted_at', null).select().maybeSingle();
     if (error) return NextResponse.json({ error: `เปลี่ยนสถานะงานไม่สำเร็จ: ${error.message}` }, { status: 500 });
+    if (!data) return NextResponse.json({ error: 'ไม่พบงานนี้ (อาจถูกลบไปแล้ว)' }, { status: 404 });
     return NextResponse.json({ data });
   }
 
@@ -104,14 +112,19 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
   const coordErr = validateCoords(rest);
   if (coordErr) return NextResponse.json({ error: coordErr }, { status: 400 });
 
+  const fields: Record<string, unknown> = {};
+  const src: Record<string, unknown> = { ...rest, notes, profit };
+  for (const k of EDITABLE_FIELDS) if (src[k] !== undefined) fields[k] = src[k];
+  // ฟอร์มแก้ไขงานส่ง assigned_driver_id มาด้วย — เดิมถูกตัดทิ้งเงียบๆ จึงเปลี่ยนคนขับจากหน้าแก้ไขไม่ได้
+  if (assigned_driver_id !== undefined) fields.assigned_driver_id = assigned_driver_id || null;
+  if (Object.keys(fields).length === 0) {
+    return NextResponse.json({ error: 'ไม่มีข้อมูลที่แก้ไขได้' }, { status: 400 });
+  }
+
   const { data, error } = await supabase
-    .from('jobs').update({
-      ...rest,
-      ...(notes !== undefined && { notes }),
-      // ฟอร์มแก้ไขงานส่ง assigned_driver_id มาด้วย — เดิมถูกตัดทิ้งเงียบๆ จึงเปลี่ยนคนขับจากหน้าแก้ไขไม่ได้
-      ...(assigned_driver_id !== undefined && { assigned_driver_id: assigned_driver_id || null }),
-    }).eq('id', id).select().single();
+    .from('jobs').update(fields).eq('id', id).is('deleted_at', null).select().maybeSingle();
   if (error) return NextResponse.json({ error: `บันทึกงานไม่สำเร็จ: ${error.message}` }, { status: 500 });
+  if (!data) return NextResponse.json({ error: 'ไม่พบงานนี้ (อาจถูกลบไปแล้ว)' }, { status: 404 });
   return NextResponse.json({ data });
 }
 
@@ -121,8 +134,10 @@ export async function DELETE(_req: NextRequest, { params }: Params): Promise<Nex
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'กรุณาเข้าสู่ระบบใหม่' }, { status: 401 });
 
-  const { error } = await supabase
-    .from('jobs').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+  const { data, error } = await supabase
+    .from('jobs').update({ deleted_at: new Date().toISOString() }).eq('id', id).is('deleted_at', null)
+    .select('id');
   if (error) return NextResponse.json({ error: `ลบงานไม่สำเร็จ: ${error.message}` }, { status: 500 });
+  if (!data || data.length === 0) return NextResponse.json({ error: 'ไม่พบงานนี้ (อาจถูกลบไปแล้ว)' }, { status: 404 });
   return NextResponse.json({ data: { deleted: true } });
 }
