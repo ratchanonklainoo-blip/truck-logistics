@@ -11,7 +11,7 @@ import {
 import {
   Truck, Fuel, TrendingUp, TrendingDown, DollarSign, Users,
   AlertCircle, BarChart3, Gauge, Building2, Calendar, Receipt,
-  Plus, ClipboardList, Banknote, Zap,
+  Plus, ClipboardList, Zap,
 } from 'lucide-react';
 import type { Trip, Driver } from '@/types';
 import {
@@ -21,6 +21,16 @@ import {
   formatCurrency, formatNumber, calcFuelEfficiency,
   isDateInFilter, getCurrentMonthFilter, getThaiMonthLabel,
 } from '@/lib/utils';
+
+interface MonthlyTotals {
+  total_revenue: number;
+  total_fuel_cost: number;
+  total_other_cost: number;
+  total_extra_expenses: number;
+  total_driver_cost: number;
+  total_fixed_expenses: number;
+  net_after_fixed: number;
+}
 
 interface DriverStat {
   driver:          Driver;
@@ -57,17 +67,20 @@ export default function DashboardPage() {
   const [allTrips,    setAllTrips]    = useState<Trip[]>([]);
   const [monthFilter, setMonthFilter] = useState(getCurrentMonthFilter());
   const [loading,     setLoading]     = useState(true);
+  // กำไร/รายจ่ายรายเดือนจาก /api/reports/monthly (สูตรเดียวกับหน้ารายงานรายเดือน)
+  const [monthlyTotals, setMonthlyTotals] = useState<MonthlyTotals | null>(null);
+  const [monthlyError,  setMonthlyError]  = useState('');
+  const [reloadTick,    setReloadTick]    = useState(0);
   const [jobStats, setJobStats] = useState({
-    active: 0, inProgress: 0, waitingPayment: 0, waitingFuel: 0, todayCash: 0, pendingAdvances: 0,
+    active: 0, inProgress: 0, waitingPayment: 0, waitingFuel: 0, todayCash: 0,
   });
 
   useEffect(() => {
     const load = async () => {
-      const [{ data: dr }, { data: tr }, { data: jobs }, { data: adv }] = await Promise.all([
+      const [{ data: dr }, { data: tr }, { data: jobs }] = await Promise.all([
         supabase.from('drivers').select('*').is('deleted_at', null).eq('is_active', true),
         supabase.from('trips').select('*').is('deleted_at', null),
         supabase.from('jobs').select('status, selling_price, date').is('deleted_at', null),
-        supabase.from('advance_requests').select('id').eq('status', 'pending').is('deleted_at', null),
       ]);
       setDrivers(dr || []);
       // นับเฉพาะเที่ยวของคนขับที่ยังใช้งาน ให้ตรงกับรายงานรายเดือน (เที่ยวคนขับที่ลบแล้วยังอยู่ใน DB แต่ไม่นับ)
@@ -79,20 +92,36 @@ export default function DashboardPage() {
         active:         (jobs || []).filter(j => j.status !== 'closed').length,
         inProgress:     (jobs || []).filter(j => j.status === 'in_progress').length,
         waitingPayment: (jobs || []).filter(j => j.status === 'waiting_payment').length,
-        waitingFuel:    (jobs || []).filter(j => j.status === 'waiting_driver').length,
+        waitingFuel:    (jobs || []).filter(j => j.status === 'waiting_driver').length, // ใช้ตอนเปิดการ์ดตรวจน้ำมันคืน
         todayCash:      closedToday.reduce((s, j) => s + (j.selling_price || 0), 0),
-        pendingAdvances: (adv || []).length,
       });
       setLoading(false);
     };
     load();
 
     const channel = supabase.channel('dashboard-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => { load(); setReloadTick(t => t + 1); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs'  }, load)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
+
+  useEffect(() => {
+    const ad = monthFilter.year_be - BUDDHIST_ERA_OFFSET;
+    const monthYear = `${ad}-${String(monthFilter.month_index + 1).padStart(2, '0')}`;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/reports/monthly?month_year=${monthYear}`);
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'โหลดไม่สำเร็จ');
+        if (!cancelled) { setMonthlyTotals(json.data.totals); setMonthlyError(''); }
+      } catch (e) {
+        if (!cancelled) { setMonthlyTotals(null); setMonthlyError(e instanceof Error ? e.message : 'โหลดกำไรไม่สำเร็จ'); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [monthFilter, reloadTick]);
 
   const monthTrips = useMemo(() =>
     allTrips.filter(t => isDateInFilter(t.date, monthFilter)),
@@ -106,6 +135,12 @@ export default function DashboardPage() {
     const totalExpenses = totalFuel + totalOther + totalTripPay;
     return { totalRevenue, totalFuel, totalOther, totalTripPay, totalExpenses, netProfit: totalRevenue - totalExpenses };
   }, [monthTrips]);
+
+  const monthlyExpenses = monthlyTotals
+    ? monthlyTotals.total_fuel_cost + monthlyTotals.total_other_cost + monthlyTotals.total_extra_expenses
+      + monthlyTotals.total_driver_cost + monthlyTotals.total_fixed_expenses
+    : 0;
+  const monthlyProfit = monthlyTotals ? monthlyTotals.net_after_fixed : 0;
 
   const driverStats = useMemo<DriverStat[]>(() =>
     drivers.map(driver => {
@@ -292,12 +327,11 @@ export default function DashboardPage() {
           <Zap className="w-4 h-4 text-yellow-400" />
           <span className="text-white font-semibold text-sm">Quick Actions</span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           {[
             { label: '+ สร้างงานใหม่',     icon: ClipboardList, color: 'bg-blue-500 hover:bg-blue-400',    href: '/jobs' },
             { label: '+ บันทึกเที่ยว',     icon: Truck,         color: 'bg-orange-500 hover:bg-orange-400', href: '/trips' },
-            { label: 'อนุมัติเบิกเงิน',    icon: Banknote,      color: 'bg-purple-500 hover:bg-purple-400', href: '/advances' },
-            { label: 'ตรวจน้ำมัน',        icon: Fuel,          color: 'bg-yellow-500 hover:bg-yellow-400', href: '/fuel' },
+            // ซ่อน 'อนุมัติเบิกเงิน' (/advances) และ 'ตรวจน้ำมัน' (/fuel) — ดู src/lib/hiddenFeatures.ts
           ].map(({ label, icon: Icon, color, href }) => (
             <button key={label} onClick={() => router.push(href)}
               className={`${color} text-white rounded-xl px-4 py-3 flex items-center gap-2 text-sm font-medium transition-colors`}>
@@ -309,14 +343,12 @@ export default function DashboardPage() {
       </div>
 
       {/* Live Job Status Row */}
-      <div className="grid grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: 'งานที่เปิดอยู่',   value: jobStats.active,          color: 'bg-blue-600',   sub: 'ทุกสถานะ' },
           { label: 'กำลังวิ่ง',        value: jobStats.inProgress,      color: 'bg-orange-500', sub: 'บนถนนตอนนี้' },
           { label: 'รอรับเงิน',        value: jobStats.waitingPayment,  color: 'bg-purple-500', sub: 'ลูกค้าค้างจ่าย' },
-          { label: 'รอตรวจน้ำมัน',    value: jobStats.waitingFuel,     color: 'bg-yellow-500', sub: 'รออนุมัติ' },
           { label: 'รายได้วันนี้',     value: formatCurrency(jobStats.todayCash), color: 'bg-green-600', sub: 'งานปิดวันนี้' },
-          { label: 'รออนุมัติเบิก',   value: jobStats.pendingAdvances, color: 'bg-red-500',    sub: 'advance requests' },
         ].map(({ label, value, color, sub }) => (
           <div key={label} className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm text-center">
             <div className={`w-8 h-1.5 rounded-full ${color} mx-auto mb-2`} />
@@ -332,12 +364,13 @@ export default function DashboardPage() {
         {[
           { icon: TrendingUp,   label: 'รายรับรวม',  value: formatCurrency(companyStats.totalRevenue),  color: 'border-green-500 text-green-600 bg-green-50' },
           { icon: Fuel,         label: 'ค่าน้ำมันรวม',  value: formatCurrency(companyStats.totalFuel),     color: 'border-blue-500  text-blue-600  bg-blue-50'  },
-          { icon: DollarSign,   label: 'รายจ่ายรวม', value: formatCurrency(companyStats.totalExpenses), color: 'border-red-500   text-red-600   bg-red-50'   },
-          { icon: companyStats.netProfit >= 0 ? TrendingUp : AlertCircle,
+          { icon: DollarSign,   label: 'รายจ่ายรวม', value: monthlyTotals ? formatCurrency(monthlyExpenses) : (monthlyError ? 'โหลดไม่ได้' : '…'), color: 'border-red-500   text-red-600   bg-red-50'   },
+          { icon: monthlyProfit >= 0 ? TrendingUp : AlertCircle,
             label: 'กำไรสุทธิ',
-            value: formatCurrency(companyStats.netProfit),
-            color: companyStats.netProfit >= 0 ? 'border-emerald-500 text-emerald-600 bg-emerald-50' : 'border-red-500 text-red-600 bg-red-50' },
-        ].map(({ icon: Icon, label, value, color }) => (
+            value: monthlyTotals ? formatCurrency(monthlyProfit) : (monthlyError ? 'โหลดไม่ได้' : '…'),
+            color: monthlyProfit >= 0 ? 'border-emerald-500 text-emerald-600 bg-emerald-50' : 'border-red-500 text-red-600 bg-red-50',
+            note: 'รายรับ − น้ำมัน − ค่าเที่ยว/เงินเดือนฐาน − ค่าใช้จ่ายอื่น − ค่าใช้จ่ายประจำ (เท่ากับหน้ารายงานรายเดือน)' },
+        ].map(({ icon: Icon, label, value, color, note }) => (
           <div key={label} className={`bg-white rounded-xl border-l-4 p-4 shadow-sm ${color}`}>
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold uppercase tracking-wide opacity-70">{label}</p>
@@ -345,6 +378,7 @@ export default function DashboardPage() {
             </div>
             <p className="text-xl font-bold">{value}</p>
             <p className="text-xs opacity-60 mt-0.5">{monthLabel}</p>
+            {note && <p className="text-[10px] opacity-70 mt-1 leading-tight">{note}</p>}
           </div>
         ))}
       </div>
