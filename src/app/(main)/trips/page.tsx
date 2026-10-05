@@ -435,13 +435,22 @@ export default function TripsPage() {
     setExpLoading(true);
     const yr  = monthFilter.year_be - 543;
     const mo  = String(monthFilter.month_index + 1).padStart(2, '0');
-    const { data } = await supabase.from('expenses')
+    // ขอบบน = วันแรกของเดือนถัดไป (.lt) ไม่ใช้ YYYY-MM-31 เพราะเดือนที่ไม่มีวันที่ 31 ทำให้ Postgres ตอบ date ไม่ถูกต้อง (เช่น 2026-09-31)
+    const nextYr = monthFilter.month_index === 11 ? yr + 1 : yr;
+    const nextMo = String(((monthFilter.month_index + 1) % 12) + 1).padStart(2, '0');
+    const { data, error } = await supabase.from('expenses')
       .select('id,category,description,amount,date,driver_id')
       .not('category', 'in', '("fuel","advance")')
       .is('deleted_at', null)
       .gte('date', `${yr}-${mo}-01`)
-      .lte('date', `${yr}-${mo}-31`)
+      .lt('date', `${nextYr}-${nextMo}-01`)
       .order('date', { ascending: false });
+    if (error) {
+      console.error('[Trips] loadExpenses failed:', error.message);
+      alert(`โหลดรายการค่าใช้จ่ายอื่นไม่สำเร็จ: ${friendlySaveError(error)}`);
+      setExpLoading(false);
+      return;
+    }
     const drMap: Record<string, string> = {};
     drivers.forEach(d => { drMap[d.id] = d.nickname; });
     setExpenses((data || []).map(e => ({ ...e, driverName: e.driver_id ? (drMap[e.driver_id] || '-') : '-' })));
@@ -458,13 +467,18 @@ export default function TripsPage() {
 
   const saveExpense = async () => {
     if (!newExp.amount || isNaN(Number(newExp.amount))) return;
-    await supabase.from('expenses').insert({
+    const { error } = await supabase.from('expenses').insert({
       category:    newExp.category,
       description: newExp.description || null,
       amount:      Number(newExp.amount),
       date:        newExp.date,
       driver_id:   newExp.driver_id || null,
     });
+    if (error) {
+      console.error('[Trips] saveExpense failed:', error.message);
+      alert(`บันทึกค่าใช้จ่ายไม่สำเร็จ: ${friendlySaveError(error)}`);
+      return;
+    }
     setShowAddExp(false);
     setNewExp({ category: 'toll', description: '', amount: '', date: new Date().toISOString().slice(0,10), driver_id: '' });
     await loadExpenses();
