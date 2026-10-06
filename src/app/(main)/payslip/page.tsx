@@ -195,6 +195,12 @@ function PayslipContent() {
     && tripsKey === curKey && storedPayroll?.key === curKey
     && Math.abs(storedPayroll.net_pay - netPay) > 0.004
     ? storedPayroll : null;
+  const mismatchText = (p: { net_pay: number; status: string }) =>
+    `ยอดสุทธิในสลิปนี้ ${formatNumber(netPay, 2)} บาท ไม่ตรงกับยอดในใบเงินเดือนที่บันทึกไว้ ${formatNumber(p.net_pay, 2)} บาท`
+    + ` (ใบเงินเดือน${p.status === 'paid' ? 'จ่ายเงินแล้ว' : p.status === 'approved' ? 'อนุมัติแล้ว' : 'ยังไม่อนุมัติ'})`;
+  // ยอดไม่ตรง → ถามยืนยันก่อนดาวน์โหลด (ไม่มีป้ายในไฟล์)
+  const confirmMismatchDownload = () => !lockedNetMismatch || confirm(
+    `${mismatchText(lockedNetMismatch)}\n\nถ้าดาวน์โหลด ไฟล์สลิปจะแสดงยอด ${formatNumber(netPay, 2)} บาท\nต้องการดาวน์โหลดต่อหรือไม่?`);
 
   const emptyRowCount = Math.max(0, PDF_CONFIG.TABLE_MIN_ROWS - billableTrips.length);
   const yearOptions   = Array.from({ length: 5 }, (_, i) => {
@@ -209,6 +215,7 @@ function PayslipContent() {
       alert('ระบบกำลังโหลด... รอสักครู่แล้วลองใหม่');
       return;
     }
+    if (!confirmMismatchDownload()) return;
     setIsDownloadPDF(true);
     try {
       const canvas  = await capturePayslip();
@@ -250,6 +257,7 @@ function PayslipContent() {
       alert('ระบบกำลังโหลด... รอสักครู่แล้วลองใหม่');
       return;
     }
+    if (!confirmMismatchDownload()) return;
     setIsDownloadPNG(true);
     try {
       const canvas = await capturePayslip();
@@ -345,6 +353,14 @@ function PayslipContent() {
         </div>
       </div>
 
+      {/* เดือนที่ล็อก: ยอดสุทธิสลิป ≠ ใบเงินเดือนที่บันทึก — แสดงบนหน้าจอเท่านั้น (อยู่นอก #payslip-content ไม่ติดไปกับ PDF/PNG) */}
+      {lockedNetMismatch && (
+        <div className="bg-red-50 border-2 border-red-300 text-red-700 text-sm p-3 rounded-lg no-print">
+          <div className="font-bold">⚠ {mismatchText(lockedNetMismatch)}</div>
+          <div className="text-xs mt-1">ตรวจสอบที่หน้าเงินเดือนก่อนส่งสลิปนี้ — ตอนกดดาวน์โหลดระบบจะถามยืนยันอีกครั้ง</div>
+        </div>
+      )}
+
       {/* A4 Preview */}
       {/* มือถือ: เลื่อนแนวนอนในกรอบ (A4 กว้าง 794px) ; จอกว้าง: อยู่กลางเหมือนเดิม */}
       <div className="overflow-x-auto print:overflow-visible">
@@ -380,14 +396,6 @@ function PayslipContent() {
                 vertical-align: middle !important;
               }
             `}</style>
-
-            {/* เดือนที่ล็อก: ยอดสุทธิสลิป ≠ ใบเงินเดือนที่บันทึก — อยู่ในสลิป (ติดไปกับ PDF/PNG) เพื่อไม่ให้ส่งสลิปยอดไม่ตรงโดยไม่รู้ตัว */}
-            {lockedNetMismatch && (
-              <div style={{ border: '2px solid #B91C1C', backgroundColor: '#FEF2F2', color: '#B91C1C', borderRadius: '6px', padding: '8px 12px', marginBottom: '10px', fontSize: '13px', fontWeight: 700 }}>
-                ⚠ ยอดสุทธิในสลิปนี้ ({formatNumber(netPay, 2)} บาท ตามสูตรปัจจุบัน) ไม่ตรงกับใบเงินเดือนที่บันทึกไว้ ({formatNumber(lockedNetMismatch.net_pay, 2)} บาท{lockedNetMismatch.status === 'paid' ? ' · จ่ายแล้ว' : lockedNetMismatch.status === 'approved' ? ' · อนุมัติแล้ว' : ' · ร่าง'})
-                <div style={{ fontWeight: 400, fontSize: '12px' }}>เดือนที่ล็อก — ตรวจสอบที่หน้าเงินเดือนก่อนใช้สลิปนี้</div>
-              </div>
-            )}
 
             {/* ── Header ── */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px', borderBottom: '2px solid #1E3A5F', paddingBottom: '10px' }}>
