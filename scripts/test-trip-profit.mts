@@ -1,5 +1,6 @@
 // ทดสอบ lib/tripProfit (กำไรรายเที่ยว/รายวัน) — DESIGN_TRIP_PROFIT_dev1.md
 // รัน:  node --import ./scripts/ts-hooks.mjs scripts/test-trip-profit.mts           (unit test ไม่แตะ DB)
+//       node --import ./scripts/ts-hooks.mjs scripts/test-trip-profit.mts --live    (+ SELECT ข้อมูลจริง กระทบยอดกับรายงานรายเดือนทุกเดือน)
 import {
   buildTripProfit, vehicleKey, classifyRow, splitByWeight, profitColor, reconcileWithMonthlyReport,
   type TPRow, type TPDriver,
@@ -114,4 +115,57 @@ eq('reconcile: สูตรบรรทัดรวมถูก', reconcileWithM
 
 console.log(`\nunit: ${pass} ผ่าน, ${fail} ไม่ผ่าน`);
 
+// ── live: SELECT อย่างเดียว ──
+if (process.argv.includes('--live')) {
+  const { sqlJson, loadMonth, lastDayOf } = await import('./live-report.mts');
+  const { buildMonthlyReport } = await import('../src/lib/monthlyReport.ts');
+  const all = sqlJson<TPRow[]>(`
+    select coalesce(json_agg(json_build_object(
+      'id', t.id, 'date', t.date, 'driver_id', t.driver_id, 'origin', t.origin, 'destination', t.destination, 'product', t.product,
+      'plate', t.plate, 'odometer_start', t.odometer_start, 'odometer_end', t.odometer_end,
+      'transport_price', t.transport_price, 'trip_pay', t.trip_pay, 'fuel_cost', t.fuel_cost, 'fuel_litres', t.fuel_litres,
+      'other_cost', t.other_cost, 'other_item', t.other_item, 'remarks', t.remarks, 'created_at', t.created_at,
+      'drivers', json_build_object('id', d.id, 'name', d.name, 'nickname', d.nickname, 'license_plate', d.license_plate,
+        'is_active', d.is_active, 'deleted_at', d.deleted_at, 'start_date', d.start_date, 'end_date', d.end_date))
+      order by t.date, t.id), '[]'::json) j
+    from trips t join drivers d on d.id = t.driver_id where t.deleted_at is null`);
+  console.log(`\nlive: ${all.length} แถว`);
+  const months = Array.from(new Set(all.map(t => t.date.slice(0, 7)))).sort();
+  for (const ym of months) {
+    const from = `${ym}-01`, to = lastDayOf(ym);
+    const tp = buildTripProfit(all, { from, to });
+    const md = loadMonth(ym);
+    const rep = buildMonthlyReport({ month_year: ym, dateFrom: from, dateTo: to, todayDate: '2026-10-05', trips: md.trips, fixedExpenses: md.fixed, expenses: md.expenses });
+    const commission = rep.driver_summaries.reduce((a, s) => a + s.total_commission, 0);
+    const rc = reconcileWithMonthlyReport(tp.totals, { ...rep.totals, total_commission: commission });
+    eq(`live ${ym}: กระทบยอด net_profit รายงาน ${rep.totals.net_profit}`, rc.diff, 0);
+    eq(`live ${ym}: จำนวนเที่ยว = รายงาน`, tp.totals.trip_count, rep.totals.trip_count);
+    eq(`live ${ym}: ค่าใช้จ่ายอื่น = รายงาน`, tp.totals.other_expenses, Math.round(rep.totals.total_other_cost * 100) / 100);
+    eq(`live ${ym}: รายได้เที่ยว+นอกเที่ยว = รายงาน`, Math.round((tp.totals.revenue + tp.totals.off_trip_revenue) * 100) / 100, Math.round(rep.totals.total_revenue * 100) / 100);
+    // น้ำมัน: จริงที่จัดสรร − ยกมา + ค้าง/ยกไป = Σ fuel_cost เดือน (= total_fuel_cost รายงาน)
+    eq(`live ${ym}: น้ำมันกระทบยอด = รายงาน ${Math.round(rep.totals.total_fuel_cost * 100) / 100}`,
+      Math.round((tp.totals.fuel_actual - tp.totals.carried_in_before + tp.totals.pending_out) * 100) / 100,
+      Math.round(rep.totals.total_fuel_cost * 100) / 100);
+    // Daily Summary: ทุกวัน-รถ Σเที่ยวตรงกับวัน
+    const bad = tp.days.filter(d => {
+      const tt = tp.trips.filter(t => t.vehicle === d.vehicle && t.date === d.date);
+      const s = (f: (t: typeof tt[number]) => number) => Math.round(tt.reduce((a, t) => a + Math.round(f(t) * 100), 0)) / 100;
+      const actual = s(t => (t.fuel_mode === 'actual' ? t.fuel : 0));
+      return (d.trip_count > 0 && d.fuel_pool > 0 && actual !== d.fuel_pool) || s(t => t.profit) !== d.profit || s(t => t.cost) !== d.cost
+        || s(t => t.revenue) !== d.revenue || tt.length !== d.trip_count;
+    });
+    eq(`live ${ym}: Daily Summary ตรงผลรวมเที่ยวทุกวัน-รถ (${tp.days.length})`, bad.map(d => `${d.date} ${d.vehicle}`), []);
+  }
+  // ตัวอย่างในเอกสารออกแบบ
+  const sep = buildTripProfit(all, { from: '2026-09-01', to: '2026-09-30' });
+  const jun = buildTripProfit(all, { from: '2026-06-01', to: '2026-06-30' });
+  const apr = buildTripProfit(all, { from: '2026-04-01', to: '2026-04-30' });
+  const pick = (r: typeof sep, d: string) => r.trips.filter(t => t.date === d && t.vehicle === '71-1831-71-1832').map(t => t.fuel);
+  eq('live ตัวอย่าง 29 มิ.ย.', pick(jun, '2026-06-29'), [7752.43, 8027.57]);
+  eq('live ตัวอย่าง 11 ก.ย.', pick(sep, '2026-09-11'), [3833.34, 3833.33, 3833.33]);
+  eq('live ตัวอย่าง 1 ก.ย. (ยกมาจาก 31 ส.ค.)', pick(sep, '2026-09-01'), [7136.67, 7136.67, 7136.66]);
+  eq('live ตัวอย่าง 19 เม.ย. ประมาณการ', [pick(apr, '2026-04-19'), apr.days.find(d => d.date === '2026-04-19' && d.vehicle === '71-1831-71-1832')!.est_rate], [[6915.1, 6915.09], 23.13]);
+  eq('live ก.ย.: กำไรจากเที่ยว 122,016 ค่าใช้จ่ายอื่น 30,615', [sep.totals.profit, sep.totals.other_expenses], [122016, 30615]);
+  console.log(`\nรวม: ${pass} ผ่าน, ${fail} ไม่ผ่าน`);
+}
 if (fail) process.exit(1);
