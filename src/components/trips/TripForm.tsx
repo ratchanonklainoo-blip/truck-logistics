@@ -236,7 +236,7 @@ export default function TripForm({
           <label className="form-label">คนขับ</label>
           <select {...register('driver_id')} className="form-input">
             {drivers.map(d => (
-              <option key={d.id} value={d.id}>{d.nickname} — {d.name}</option>
+              <option key={d.id} value={d.id}>{d.nickname} — {d.name}{d.is_active === false ? ' (ปิดใช้งาน)' : ''}</option>
             ))}
           </select>
         </div>

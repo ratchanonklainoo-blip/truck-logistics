@@ -38,10 +38,14 @@ export interface EmploymentLike {
   deleted_at?: string | null;
 }
 
-/** คนขับที่ถูกลบแบบเดิม (deleted_at) ไม่นับในรายงาน/เงินเดือน — คงตัวเลขเดือนที่แก้ไปแล้ว (มี.ค.–พ.ค. 2026) ไม่ให้เปลี่ยน
- *  คนขับที่ "ปิดใช้งาน" (is_active=false, deleted_at ว่าง) ยังนับในเดือนที่เขาทำงาน */
+/** นับในรายงาน/เงินเดือนหรือไม่ — ตัดแบบเดิมทุกกรณี ยกเว้นคนขับที่ปิดใช้งานผ่านปุ่มใหม่ (มี end_date):
+ *  - ถูกลบแบบเดิม (deleted_at) → ไม่นับ (คงตัวเลขเดือนที่แก้ไปแล้ว มี.ค.–พ.ค. 2026)
+ *  - is_active=false แต่ไม่มี end_date (ข้อมูลเก่า) → ไม่นับ เหมือนสูตรเดิม (ตัวเลขเดือนเก่าไม่เปลี่ยน)
+ *  - is_active=false + end_date (ปิดใช้งานแบบใหม่) → นับในเดือนที่ยังทำงาน */
 export function isCountedDriver(d: EmploymentLike | null | undefined): boolean {
-  return !!d && !d.deleted_at;
+  if (!d || d.deleted_at) return false;
+  if (d.is_active === false && !d.end_date) return false;
+  return true;
 }
 
 /** ทำงานอยู่ในเดือนนี้หรือไม่: เริ่มงานไม่หลังวันสิ้นเดือน และวันสุดท้ายไม่ก่อนวันที่ 1 ของเดือน */
@@ -50,7 +54,6 @@ export function isEmployedInMonth(d: EmploymentLike, month_year: string): boolea
   const { from, to } = monthBounds(month_year);
   if (d.start_date && d.start_date > to) return false;
   if (d.end_date && d.end_date < from) return false;
-  // ปิดใช้งานแบบไม่มีวันสุดท้าย (ข้อมูลเก่า) — ไม่ระบุช่วง จึงถือว่ายังทำงาน (ไม่ตัดเงินเดือนย้อนหลัง)
   return true;
 }
 

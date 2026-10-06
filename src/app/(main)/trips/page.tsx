@@ -23,7 +23,7 @@ import {
 } from '@/lib/utils';
 import { todayBangkok, nextMonthStart } from '@/lib/dateTh';
 import { fetchAllRows } from '@/lib/fetchAll';
-import { sumTripPay, baseForMonth } from '@/lib/payrollCalc';
+import { sumTripPay, baseForMonth, isCountedDriver } from '@/lib/payrollCalc';
 
 // แปลง error จาก Supabase เป็นข้อความไทยที่ผู้ใช้อ่านเข้าใจ
 function friendlySaveError(err: { message?: string; code?: string }): string {
@@ -80,11 +80,13 @@ export default function TripsPage() {
         .from('drivers')
         .select('*')
         .is('deleted_at', null)
-        .eq('is_active', true)
+        // รวมคนขับที่ปิดใช้งาน เพื่อดู/แก้เที่ยวเก่าได้ — แต่ไม่ให้เลือกตอนบันทึกเที่ยวใหม่ (formDrivers)
+        .order('is_active', { ascending: false })
         .order('created_at');
-      if (data && data.length > 0) {
-        setDrivers(data);
-        setSelectedDriver(data[0]);
+      const list = (data || []).filter(isCountedDriver); // ปิดใช้งานแบบเก่า (ไม่มี end_date) ไม่แสดงเหมือนเดิม
+      if (list.length > 0) {
+        setDrivers(list);
+        setSelectedDriver(list[0]);
       }
     };
     load();
@@ -168,13 +170,22 @@ export default function TripsPage() {
 
   const driverTotals = useMemo(() => calculateTotals(currentDriverTrips), [currentDriverTrips]);
 
+  // รายการคนขับในฟอร์ม: เฉพาะที่ใช้งาน (+ คนขับของเที่ยวที่กำลังแก้ ถ้าปิดใช้งานแล้ว)
+  const activeDrivers = useMemo(() => drivers.filter(d => d.is_active !== false), [drivers]);
+  const formDrivers = useMemo(() => {
+    const editingDriver = editingTrip ? drivers.find(d => d.id === editingTrip.driver_id) : undefined;
+    return editingDriver && editingDriver.is_active === false ? [...activeDrivers, editingDriver] : activeDrivers;
+  }, [drivers, activeDrivers, editingTrip]);
+  const formDefaultDriverId = selectedDriver && selectedDriver.is_active !== false
+    ? selectedDriver.id : (activeDrivers[0]?.id || '');
+
   const companyStats = useMemo(() => {
     const totalRevenue = allMonthTrips.reduce((s, t) => s + (t.transport_price || 0), 0);
     const totalTripPay = sumTripPay(allMonthTrips);
     const totalFuel    = allMonthTrips.reduce((s, t) => s + (t.fuel_cost || 0), 0);
     const totalOther   = allMonthTrips.reduce((s, t) => s + (t.other_cost || 0), 0);
-    const activeDrivers = new Set(allMonthTrips.map(t => t.driver_id)).size || 2;
-    const totalSalaries = activeDrivers * (selectedDriver?.base_salary ?? 0);
+    const driversWithTrips = new Set(allMonthTrips.map(t => t.driver_id)).size || 2;
+    const totalSalaries = driversWithTrips * (selectedDriver?.base_salary ?? 0);
     const totalExpenses = totalTripPay + totalFuel + totalOther + totalSalaries;
     return { totalRevenue, totalTripPay, totalFuel, totalOther, totalSalaries, totalExpenses, netProfit: totalRevenue - totalExpenses };
   }, [allMonthTrips, selectedDriver]);
@@ -604,7 +615,7 @@ export default function TripsPage() {
               onChange={e => setSelectedDriver(drivers.find(d => d.id === e.target.value) || null)}
             >
               {drivers.map(d => (
-                <option key={d.id} value={d.id}>{d.nickname} — {d.name}</option>
+                <option key={d.id} value={d.id}>{d.nickname} — {d.name}{d.is_active === false ? ' (ปิดใช้งาน)' : ''}</option>
               ))}
             </select>
           </div>
@@ -717,8 +728,8 @@ export default function TripsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
           <TripForm
-            drivers={drivers}
-            selectedDriverId={selectedDriver?.id || ''}
+            drivers={formDrivers}
+            selectedDriverId={formDefaultDriverId}
             initialOdometer={initialOdometer}
             products={products}
             locations={locations}
@@ -884,7 +895,7 @@ export default function TripsPage() {
                 <select className="form-input" value={newExp.driver_id}
                   onChange={e => setNewExp(f => ({ ...f, driver_id: e.target.value }))}>
                   <option value="">- ไม่ระบุ -</option>
-                  {drivers.map(d => (
+                  {activeDrivers.map(d => (
                     <option key={d.id} value={d.id}>{d.nickname} ({d.name})</option>
                   ))}
                 </select>

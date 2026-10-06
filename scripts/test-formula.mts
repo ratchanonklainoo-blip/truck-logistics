@@ -60,6 +60,11 @@ eq('#7 ขอบเดือน', ['2026-01', '2026-02', '2028-02', '2026-04', '
   eq('#13 ปิดใช้งาน เดือนหลัง end_date ฐาน = 0', baseForMonth(ended, '2026-07'), { base_salary: 0, social_security: 0 });
   eq('#13b คนขับถูกลบแบบเดิม (deleted_at) ยังไม่นับ — คงตัวเลข มี.ค.–พ.ค.',
     report('2026-05', [trip({ drivers: { ...DR, is_active: false, deleted_at: '2026-06-06' } })]).totals.total_revenue, 0);
+  const legacyOff = { ...DR, is_active: false, end_date: null };
+  eq('#13c ปิดใช้งานแบบเก่า (ไม่มี end_date) ไม่นับเหมือนเดิม + ไม่สร้างใบเงินเดือน',
+    [report('2026-05', [trip({ drivers: legacyOff })]).totals.total_revenue, isEmployedInMonth(legacyOff, '2026-05')], [0, false]);
+  eq('#13d ปิดใช้งานแบบใหม่ ก่อนวันเริ่ม/หลังวันสุดท้าย ไม่สร้างใบเงินเดือน',
+    [isEmployedInMonth({ ...ended, start_date: '2026-03-01' }, '2026-02'), isEmployedInMonth(ended, '2026-07')], [false, false]);
 }
 // 14–16 ค่าเที่ยว
 eq('#14 ค่าขนส่ง 7,000 ค่าเที่ยว 1,000 → 1,000 ทุกจุด', [
@@ -116,6 +121,30 @@ if (process.argv.includes('--live')) {
     console.log(`${same ? 'PASS' : 'FAIL'}  live ${ym}: กำไร dashboard เก่า ${old.net_profit} ใหม่ ${t.net_profit} | รายงาน เก่า ${old.net_after_fixed} ใหม่ ${t.net_after_fixed} | เที่ยว ${old.trips}/${t.trip_count}`);
   }
   writeFileSync(cacheFile, JSON.stringify(cache));
+
+  // จำลองใบเงินเดือน (ไม่เขียน DB): คำนวณทุกใบที่มีอยู่ด้วยสูตรใหม่ เทียบตัวเลขที่เก็บไว้ + ใบไหนหน้าเงินเดือนจะแสดง/auto-sync
+  const { sqlJson } = await import('./live-report.mts');
+  const sim = sqlJson<{ payrolls: Record<string, unknown>[]; drivers: Record<string, unknown>[]; trips: Record<string, unknown>[] }>(`
+    select json_build_object(
+      'payrolls', (select json_agg(p order by month_year) from payrolls p where deleted_at is null),
+      'drivers', (select json_agg(d) from drivers d),
+      'trips', (select json_agg(json_build_object('driver_id', driver_id, 'date', date, 'origin', origin, 'destination', destination,
+                 'trip_pay', trip_pay, 'withdraw', withdraw, 'distance', distance)) from trips where deleted_at is null)
+    )::text j`);
+  const { isCountedDriver } = await import('../src/lib/payrollCalc.ts');
+  for (const p of sim.payrolls) {
+    const d = sim.drivers.find(x => x.id === p.driver_id)!;
+    const ym = String(p.month_year); const b = monthBounds(ym);
+    const trips = sim.trips.filter(t => t.driver_id === p.driver_id && String(t.date) >= b.from && String(t.date) <= b.to);
+    const fresh = calcPayroll({ driver: d as never, month_year: ym, trips: trips as never, other_additions: p.other_additions as number, other_deductions: p.other_deductions as number });
+    const shown = isCountedDriver(d as never); const sync = shown && isEmployedInMonth(d as never, ym) && p.status === 'draft';
+    const diff = payrollChangedFields(p as never, fresh).map(k => `${k} ${p[k]}→${fresh[k]}`).join(', ');
+    // สูตรเก่า (ก่อน 61b19fe): ฐานเต็ม, trip_pay ?? 10%, เบิก = withdraw ถ้า > 0 (ใบเบิกที่อนุมัติ = 0 แถวใน DB), ไม่มี start_date
+    const oldComm = trips.reduce((x, t) => x + (t.trip_pay != null ? Number(t.trip_pay) : 0), 0);
+    const oldAdv = trips.reduce((x, t) => x + (Number(t.withdraw) || 0), 0);
+    const oldNet = Math.round(((Number(d.base_salary) || 0) + oldComm - oldAdv - (Number(d.social_security) || 0)) * 100) / 100;
+    console.log(`sim ${ym} ${String(d.nickname)} [${p.status}] แสดง=${shown ? 'ใช่' : 'ไม่'} auto-sync=${sync ? 'ใช่' : 'ไม่'} | สุทธิ เก็บไว้ ${p.net_pay} สูตรเก่า ${oldNet} สูตรใหม่ ${fresh.net_pay}${Math.abs(oldNet - fresh.net_pay) < 0.005 ? ' (เก่า=ใหม่)' : ' (ต่างจากสูตรเก่า)'} | ${diff || 'ไม่เปลี่ยน'}`);
+  }
   console.log(`\nรวม: ${pass} ผ่าน, ${fail} ไม่ผ่าน`);
 }
 process.exitCode = fail ? 1 : 0;

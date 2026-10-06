@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import type { Trip, Driver } from '@/types';
 import { countRealTrips } from '@/lib/tripCount';
-import { tripPayOf, sumTripPay } from '@/lib/payrollCalc';
+import { tripPayOf, sumTripPay, isCountedDriver } from '@/lib/payrollCalc';
 import {
   COMPANY, THAI_MONTHS, BUDDHIST_ERA_OFFSET, CHART_COLORS,
 } from '@/lib/constants';
@@ -96,7 +96,8 @@ export default function DashboardPage() {
 
     const load = async () => {
       const [{ data: dr }, tripResults, { data: jobs }] = await Promise.all([
-        supabase.from('drivers').select('*').is('deleted_at', null).eq('is_active', true),
+        // รวมคนขับที่ปิดใช้งาน (เงินของเดือนที่เขายังทำงานต้องอยู่) — ตัดเฉพาะคนที่ถูกลบแบบเดิม (deleted_at)
+        supabase.from('drivers').select('*').is('deleted_at', null),
         Promise.all(ranges.map(([f, to]) => fetchAllRows<Trip>((a, b) =>
           supabase.from('trips').select('*').is('deleted_at', null)
             .gte('date', f).lt('date', to).order('id').range(a, b)))),
@@ -104,9 +105,9 @@ export default function DashboardPage() {
       ]);
       if (cancelled) return;
       const tr = tripResults.flatMap(r => r.data);
-      setDrivers(dr || []);
-      // นับเฉพาะเที่ยวของคนขับที่ยังใช้งาน ให้ตรงกับรายงานรายเดือน (เที่ยวคนขับที่ลบแล้วยังอยู่ใน DB แต่ไม่นับ)
-      const activeIds = new Set((dr || []).map(d => d.id));
+      setDrivers((dr || []).filter(isCountedDriver));
+      // นับเที่ยวของคนขับที่ไม่ถูกลบ (รวมที่ปิดใช้งาน) ให้ตรงกับรายงานรายเดือน (เที่ยวคนขับที่ลบแล้วยังอยู่ใน DB แต่ไม่นับ)
+      const activeIds = new Set((dr || []).filter(isCountedDriver).map(d => d.id));
       setAllTrips((tr || []).filter(t => activeIds.has(t.driver_id)));
       const today = todayBangkok();
       const closedToday = (jobs || []).filter(j => j.status === 'closed' && j.date === today);
@@ -165,8 +166,9 @@ export default function DashboardPage() {
   // กำไร dashboard = ก่อนหักค่าใช้จ่ายประจำ (CEO สั่ง) ; หน้ารายงานยังใช้ net_after_fixed
   const monthlyProfit = monthlyTotals ? monthlyTotals.net_profit : 0;
 
+  // คนขับที่ปิดใช้งานแสดงเฉพาะเดือนที่มีเที่ยว
   const driverStats = useMemo<DriverStat[]>(() =>
-    drivers.map(driver => {
+    drivers.filter(d => d.is_active !== false || monthTrips.some(t => t.driver_id === d.id)).map(driver => {
       const dTrips = monthTrips.filter(t => t.driver_id === driver.id);
       const revenue  = dTrips.reduce((s, t) => s + (t.transport_price || 0), 0);
       const trip_pay = sumTripPay(dTrips);

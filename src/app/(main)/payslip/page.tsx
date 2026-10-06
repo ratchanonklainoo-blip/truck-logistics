@@ -16,7 +16,7 @@ import {
 } from '@/lib/utils';
 import { nextMonthStart } from '@/lib/dateTh';
 import { fetchAllRows } from '@/lib/fetchAll';
-import { baseForMonth } from '@/lib/payrollCalc';
+import { baseForMonth, isCountedDriver } from '@/lib/payrollCalc';
 
 // ── PDF fix: company name is ALWAYS pulled from COMPANY.name constant
 // ── Font sizes: 22px for header, 13px minimum for content
@@ -89,8 +89,11 @@ function PayslipContent() {
 
   useEffect(() => {
     const load = async () => {
-      const { data: driverData } = await supabase
-        .from('drivers').select('*').is('deleted_at', null).eq('is_active', true);
+      const { data: driverRows } = await supabase
+        // รวมคนขับที่ปิดใช้งาน เพื่อพิมพ์สลิปเดือนที่เขายังทำงานได้ (เรียงคนที่ใช้งานก่อน)
+        .from('drivers').select('*').is('deleted_at', null)
+        .order('is_active', { ascending: false }).order('created_at');
+      const driverData = (driverRows || []).filter(isCountedDriver);
       if (driverData?.length) {
         setDrivers(driverData);
         const driverParam = searchParams.get('driver');
@@ -249,7 +252,7 @@ function PayslipContent() {
               onChange={e => setSelectedDriver(drivers.find(d => d.id === e.target.value) || null)}
             >
               {drivers.map(d => (
-                <option key={d.id} value={d.id}>{d.nickname} — {d.name}</option>
+                <option key={d.id} value={d.id}>{d.nickname} — {d.name}{d.is_active === false ? ' (ปิดใช้งาน)' : ''}</option>
               ))}
             </select>
           </div>

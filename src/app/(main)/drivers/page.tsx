@@ -6,12 +6,13 @@ import {
   UserCheck, Plus, Pencil, CreditCard, Shield,
   ChevronDown, ChevronUp, X, Check, Truck,
   Fuel, BarChart3, Phone, Wallet, MessageCircle,
-  Circle, Trash2, MapPin,
+  Circle, MapPin, UserX, UserPlus,
 } from 'lucide-react';
 import type { Driver } from '@/types';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatThaiDate } from '@/lib/utils';
 import { countRealTrips } from '@/lib/tripCount';
 import { sumTripPay } from '@/lib/payrollCalc';
+import { todayBangkok } from '@/lib/dateTh';
 import SaveLocationInline from '@/components/drivers/SaveLocationInline';
 import MapsLink from '@/components/ui/MapsLink';
 
@@ -72,7 +73,8 @@ export default function DriversPage() {
 
   const load = useCallback(async () => {
     const [{ data: drData }, { data: tripData }, { data: jobData }, { data: locData }] = await Promise.all([
-      supabase.from('drivers').select('*').is('deleted_at', null).order('created_at'),
+      supabase.from('drivers').select('*').is('deleted_at', null)
+        .order('is_active', { ascending: false }).order('created_at'),
       supabase.from('trips').select('driver_id,origin,destination,transport_price,trip_pay,distance,fuel_litres,fuel_cost')
         .is('deleted_at', null),
       supabase.from('jobs').select('assigned_driver_id,status,origin,destination')
@@ -166,8 +168,10 @@ export default function DriversPage() {
     }
   };
 
-  const handleDelete = async (d: Driver) => {
-    // Block delete if driver has active job
+  // ปิดใช้งานแทนการลบ: is_active=false + end_date (วันทำงานวันสุดท้าย)
+  // เงิน/เที่ยวของเดือนที่ยังทำงานยังอยู่ในรายงาน/dashboard/เงินเดือน; ไม่ขึ้นในรายการเลือกคนขับตอนบันทึกเที่ยวใหม่;
+  // ไม่สร้างใบเงินเดือนของเดือนหลัง end_date
+  const handleDeactivate = async (d: Driver) => {
     const { data: activeJobs } = await supabase
       .from('jobs')
       .select('id')
@@ -177,19 +181,49 @@ export default function DriversPage() {
       .limit(1);
 
     if (activeJobs && activeJobs.length > 0) {
-      alert(`ไม่สามารถลบ ${d.nickname || d.name} ได้ — มีงานที่กำลังดำเนินอยู่`);
+      alert(`ปิดใช้งาน ${d.nickname || d.name} ไม่ได้ — มีงานที่กำลังดำเนินอยู่`);
       return;
     }
 
-    if (!confirm(`ยืนยันลบคนขับ "${d.nickname || d.name}" ออกจากระบบ?\nข้อมูลการเดินทางและเงินเดือนจะยังคงอยู่`)) return;
+    const input = prompt(
+      `ปิดใช้งานคนขับ "${d.nickname || d.name}"
+วันทำงานวันสุดท้าย (ปี ค.ศ.-เดือน-วัน เช่น ${todayBangkok()})
+` +
+      'เที่ยวและเงินเดือนของเดือนที่ยังทำงานยังอยู่ในรายงาน เดือนหลังจากนี้จะไม่สร้างใบเงินเดือน',
+      todayBangkok(),
+    );
+    if (input === null) return;
+    const end = input.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(end) || Number.isNaN(new Date(`${end}T00:00:00`).getTime())) {
+      alert('รูปแบบวันที่ไม่ถูกต้อง กรุณาพิมพ์เป็น ปี ค.ศ.-เดือน-วัน เช่น 2026-10-31');
+      return;
+    }
+    if (d.start_date && end < d.start_date) {
+      alert('วันสุดท้ายต้องไม่ก่อนวันเริ่มงาน');
+      return;
+    }
 
     const { error } = await supabase
       .from('drivers')
-      .update({ deleted_at: new Date().toISOString(), is_active: false })
+      .update({ is_active: false, end_date: end, updated_at: new Date().toISOString() })
       .eq('id', d.id);
 
     if (error) {
-      alert('ลบไม่สำเร็จ: ' + friendlyDriverError(error));
+      alert('ปิดใช้งานไม่สำเร็จ: ' + friendlyDriverError(error));
+      return;
+    }
+    load();
+  };
+
+  const handleReactivate = async (d: Driver) => {
+    if (!confirm(`เปิดใช้งาน "${d.nickname || d.name}" อีกครั้ง?
+วันสุดท้าย (${d.end_date || '-'}) จะถูกล้าง — ถ้าหยุดงานไปหลายเดือนแล้วกลับมา ให้แก้ "วันเริ่มงาน" เป็นวันที่กลับมาด้วย`)) return;
+    const { error } = await supabase
+      .from('drivers')
+      .update({ is_active: true, end_date: null, updated_at: new Date().toISOString() })
+      .eq('id', d.id);
+    if (error) {
+      alert('เปิดใช้งานไม่สำเร็จ: ' + friendlyDriverError(error));
       return;
     }
     load();
@@ -217,6 +251,7 @@ export default function DriversPage() {
   const f = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
 
   const activeCount = Object.values(driverStats).filter(s => s.activeJob).length;
+  const workingCount = drivers.filter(d => d.is_active !== false).length;
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-screen">
@@ -235,9 +270,10 @@ export default function DriversPage() {
           <div>
             <h1 className="text-2xl font-bold text-slate-800">คนขับ</h1>
             <p className="text-sm text-slate-500">
-              ทั้งหมด {drivers.length} คน ·
+              ใช้งาน {workingCount} คน ·
               <span className="text-orange-600 font-medium"> กำลังวิ่ง {activeCount} คน</span> ·
-              <span className="text-green-600 font-medium"> ว่าง {drivers.length - activeCount} คน</span>
+              <span className="text-green-600 font-medium"> ว่าง {workingCount - activeCount} คน</span>
+              {drivers.length > workingCount && <span className="text-slate-400"> · ปิดใช้งาน {drivers.length - workingCount} คน</span>}
             </p>
           </div>
         </div>
@@ -293,7 +329,11 @@ export default function DriversPage() {
                     <span className="text-slate-400 text-sm">{d.name}</span>
 
                     {/* Status badge */}
-                    {isActive ? (
+                    {d.is_active === false ? (
+                      <span className="text-xs bg-slate-100 text-slate-500 border border-slate-200 rounded-full px-2 py-0.5 font-medium">
+                        ปิดใช้งาน{d.end_date ? ` · วันสุดท้าย ${formatThaiDate(d.end_date)}` : ''}
+                      </span>
+                    ) : isActive ? (
                       <span className="inline-flex items-center gap-1 text-xs bg-orange-50 text-orange-700 border border-orange-200 rounded-full px-2 py-0.5 font-medium">
                         <Truck className="w-3 h-3" />
                         {stats.activeJob}
@@ -331,13 +371,23 @@ export default function DriversPage() {
                   >
                     <Pencil className="w-4 h-4" />
                   </button>
-                  <button
-                    onClick={() => handleDelete(d)}
-                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="ลบคนขับ"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {d.is_active === false ? (
+                    <button
+                      onClick={() => handleReactivate(d)}
+                      className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                      title="เปิดใช้งานอีกครั้ง"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleDeactivate(d)}
+                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="ปิดใช้งาน (คนขับลาออก)"
+                    >
+                      <UserX className="w-4 h-4" />
+                    </button>
+                  )}
                   <button
                     onClick={() => toggleExpand(d.id)}
                     className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"

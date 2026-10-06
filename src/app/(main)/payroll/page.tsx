@@ -9,6 +9,7 @@ import {
   AlertCircle, Info,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { isEmployedInMonth, isCountedDriver } from '@/lib/payrollCalc';
 
 interface Driver {
   id: string;
@@ -16,6 +17,9 @@ interface Driver {
   nickname: string;
   base_salary: number;
   social_security: number;
+  is_active: boolean | null;
+  start_date: string | null;
+  end_date: string | null;
 }
 
 interface TripRow {
@@ -100,18 +104,19 @@ export default function PayrollPage() {
     const [{ data: pay }, { data: dr }] = await Promise.all([
       supabase.from('payrolls').select('*').is('deleted_at', null)
         .eq('month_year', selectedMonth).order('created_at', { ascending: true }),
-      supabase.from('drivers').select('id,name,nickname,base_salary,social_security')
-        .is('deleted_at', null).eq('is_active', true),
+      supabase.from('drivers').select('id,name,nickname,base_salary,social_security,is_active,start_date,end_date')
+        .is('deleted_at', null),
     ]);
-    const drList = dr || [];
+    // คนขับที่ทำงานในเดือนนี้ (รวมคนที่ปิดใช้งานแล้วแต่ end_date ยังอยู่ในเดือนนี้หรือหลังจากนั้น)
+    const drList = (dr || []).filter(d => isEmployedInMonth(d, selectedMonth));
     setDrivers(drList);
     const drMap: Record<string, Driver> = {};
-    drList.forEach(d => { drMap[d.id] = d; });
-    // แสดง/รวมยอด/sync เฉพาะคนขับที่ยังใช้งาน (ใบของคนขับที่ลบหรือปิดใช้งานยังอยู่ใน DB แต่ไม่โชว์)
+    (dr || []).filter(isCountedDriver).forEach(d => { drMap[d.id] = d; });
+    // แสดงใบของคนขับที่ไม่ถูกลบ (รวมคนที่ปิดใช้งาน) — ใบของคนขับที่ถูกลบแบบเดิมยังอยู่ใน DB แต่ไม่โชว์
     const enriched = (pay || []).filter(p => drMap[p.driver_id]).map(p => ({ ...p, driver: drMap[p.driver_id] }));
 
-    // Auto-sync: always recalculate draft payrolls so commission reflects latest trip data
-    const drafts = enriched.filter(p => p.status === 'draft');
+    // Auto-sync ใบร่าง: คำนวณใหม่ทุกครั้งที่เปิดหน้า (คงรายได้/หักอื่น) — ข้ามคนขับที่ไม่ได้ทำงานเดือนนี้ (API จะตอบ 409)
+    const drafts = enriched.filter(p => p.status === 'draft' && isEmployedInMonth(p.driver, selectedMonth));
     if (drafts.length > 0) {
       await Promise.all(drafts.map(p =>
         fetch('/api/payroll', {
@@ -355,6 +360,7 @@ export default function PayrollPage() {
                     <div>
                       <div className="font-semibold text-slate-800 text-sm">
                         {p.driver?.nickname || p.driver?.name || 'ไม่ระบุ'}
+                        {p.driver?.is_active === false && <span className="ml-1.5 text-xs font-normal text-slate-400">(ปิดใช้งาน)</span>}
                       </div>
                       <div className="text-xs text-slate-400">{p.trip_count} เที่ยว · {p.total_distance.toLocaleString('th-TH')} กม.{p.trips ? ` · ${p.trips.reduce((s, t) => s + (t.fuel_litres || 0), 0).toFixed(1)} ลิตร` : ''}</div>
                     </div>
