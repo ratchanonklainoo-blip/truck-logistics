@@ -1,6 +1,6 @@
 // ทดสอบสูตรกลาง (payrollCalc + monthlyReport) ตามชุดทดสอบ 23 ข้อของ Fern (formula-audit-2026-10-05.md)
 // รัน:  node --import ./scripts/ts-hooks.mjs scripts/test-formula.mts            (เฉพาะ unit test ไม่แตะ DB)
-//       node --import ./scripts/ts-hooks.mjs scripts/test-formula.mts --live     (+ ดึงข้อมูลจริงแบบ SELECT เทียบกับสูตรเก่า)
+//       node --import ./scripts/ts-hooks.mjs scripts/test-formula.mts --live     (+ ดึงข้อมูลจริงแบบ SELECT เทียบกับสูตรเก่า + ตัวเลขที่คาดหวัง)
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -164,7 +164,19 @@ console.log(`\nunit: ${pass} ผ่าน, ${fail} ไม่ผ่าน`);
 if (process.argv.includes('--live')) {
   const { loadMonth, lastDayOf } = await import('./live-report.mts');
   const { oldMonthlyReport } = await import('./formula-old.mts');
-  const months = ['2026-03', '2026-04', '2026-05', '2026-06', '2026-09', '2026-10'];
+  const months = ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'];
+  // ตัวเลขที่ถูกต้องหลังตั้งค่าเอก (start_date 2026-05-26, base_salary_start 2026-09-01 → ไม่มีฐาน/ปกส พ.ค.–ส.ค.)
+  // Director อนุมัติ 2026-10-06: พ.ค.–ส.ค. กำไรเพิ่ม 5,000/เดือนจากสูตรเก่า (ฐานเต็ม) ที่เหลือเท่าเดิม
+  const EXPECT: Record<string, { dashboard: number; report: number }> = {
+    '2026-03': { dashboard: 91050, report: -113366 },
+    '2026-04': { dashboard: 37546.4, report: -166869.6 },
+    '2026-05': { dashboard: 54622.9, report: -149793.1 },
+    '2026-06': { dashboard: 83206.2, report: -121209.8 },
+    '2026-07': { dashboard: 62363, report: -142053 },
+    '2026-08': { dashboard: 70867, report: -133549 },
+    '2026-09': { dashboard: 89911, report: -74855 },
+    '2026-10': { dashboard: -5700, report: -170466 },
+  };
   const cacheFile = path.join(tmpdir(), 'truck-formula-live-cache.json');
   const cache: Record<string, ReturnType<typeof loadMonth>> = process.argv.includes('--refresh') || !existsSync(cacheFile)
     ? {} : JSON.parse(readFileSync(cacheFile, 'utf8'));
@@ -174,10 +186,18 @@ if (process.argv.includes('--live')) {
       trips: d.trips, fixedExpenses: d.fixed, expenses: d.expenses });
     const old = oldMonthlyReport({ drivers: d.drivers, trips: d.trips, expenses: d.expenses, fixed_expenses: d.fixed }, ym);
     const t = rep.totals;
-    const same = Math.abs(t.net_profit - old.net_profit) < 0.005 && Math.abs(t.net_after_fixed - old.net_after_fixed) < 0.005
+    // สูตรเก่าคิดฐานเต็มทุกคนขับที่มีเที่ยว — ส่วนต่างที่ยอมให้ต่าง = ฐานที่ baseForMonth ตัดออก (ทดลองงาน/เริ่มกลางเดือน) เท่านั้น
+    const withTrips = new Set((d.trips as { driver_id: string }[]).map(x => x.driver_id));
+    const baseRemoved = (d.drivers as Record<string, unknown>[])
+      .filter(x => withTrips.has(String(x.id)) && !x.deleted_at && x.is_active !== false)
+      .reduce((s, x) => s + (Number(x.base_salary) || 0) - baseForMonth(x as never, ym).base_salary, 0);
+    const same = Math.abs(t.net_profit - (old.net_profit + baseRemoved)) < 0.005
+      && Math.abs(t.net_after_fixed - (old.net_after_fixed + baseRemoved)) < 0.005
       && t.trip_count === old.trips && Math.abs(t.total_revenue - old.rev) < 0.005;
     if (same) pass++; else fail++;
-    console.log(`${same ? 'PASS' : 'FAIL'}  live ${ym}: กำไร dashboard เก่า ${old.net_profit} ใหม่ ${t.net_profit} | รายงาน เก่า ${old.net_after_fixed} ใหม่ ${t.net_after_fixed} | เที่ยว ${old.trips}/${t.trip_count}`);
+    console.log(`${same ? 'PASS' : 'FAIL'}  live ${ym}: กำไร dashboard เก่า ${old.net_profit} ใหม่ ${t.net_profit} | รายงาน เก่า ${old.net_after_fixed} ใหม่ ${t.net_after_fixed} | ฐานที่ตัดออก ${baseRemoved} | เที่ยว ${old.trips}/${t.trip_count}`);
+    eq(`live ${ym}: ตัวเลขที่คาดหวัง (dashboard/รายงาน)`, { dashboard: t.net_profit, report: t.net_after_fixed }, EXPECT[ym]);
+    eq(`live ${ym}: ฐานที่ตัดออกจากสูตรเก่า (เฉพาะเอก พ.ค.–ส.ค.)`, baseRemoved, ym >= '2026-05' && ym <= '2026-08' ? 5000 : 0);
   }
   writeFileSync(cacheFile, JSON.stringify(cache));
 
@@ -207,7 +227,6 @@ if (process.argv.includes('--live')) {
   // สลิป: สูตรเดิม (fd07481: calcNetPay(ค่าเที่ยว, ฐานตามเดือน, เบิก, ประกันสังคม)) เทียบสูตรใหม่ (calcPayroll + รายได้/หักอื่นจากใบเงินเดือน)
   // เดือนที่ใบไม่มีรายได้/หักอื่น ต้องเท่าเดิมทุกบาท
   const { calcNetPay } = await import('../src/lib/utils.ts');
-  const { baseForMonth } = await import('../src/lib/payrollCalc.ts');
   for (const ym of months) {
     const b = monthBounds(ym);
     for (const d of sim.drivers.filter(x => isCountedDriver(x as never))) {
