@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { computePayroll } from '@/lib/payrollServer';
 import { payrollChangedFields } from '@/lib/payrollCalc';
+import { todayBangkok } from '@/lib/dateTh';
 
 export const dynamic = 'force-dynamic';
 type Params = { params: Promise<{ id: string }> };
@@ -29,6 +30,15 @@ export async function PATCH(req: NextRequest, { params }: Params): Promise<NextR
     });
     if (!fresh.ok) return NextResponse.json({ error: fresh.error, code: fresh.code }, { status: fresh.status });
     const changed = payrollChangedFields(payroll, fresh.numbers);
+    // เดือนที่ล็อก (ก่อนเดือนปัจจุบัน เวลาไทย): ยอดต่างจากสูตร → ห้ามอนุมัติและไม่เขียนทับใบร่าง
+    // ต้องกด "คำนวณใหม่" (ยืนยันพร้อมยอดก่อน/หลัง) ที่หน้าเงินเดือนก่อน แล้วจึงอนุมัติ
+    if (changed.length > 0 && payroll.month_year < todayBangkok().slice(0, 7)) {
+      const fmt = (n: number) => n.toLocaleString('th-TH', { maximumFractionDigits: 2 });
+      return NextResponse.json({
+        error: `เดือนที่ล็อก: ยอดในใบ (สุทธิ ${fmt(Number(payroll.net_pay))} บาท) ต่างจากยอดตามสูตรปัจจุบัน (${fmt(fresh.numbers.net_pay)} บาท) — อนุมัติไม่ได้ กรุณากด "คำนวณใหม่" และยืนยันยอดก่อน แล้วจึงอนุมัติ (ใบยังไม่ถูกแก้)`,
+        code: 'PAYROLL_LOCKED_MISMATCH', changed, fresh: fresh.numbers,
+      }, { status: 409 });
+    }
     if (changed.length > 0) {
       const { data, error } = await supabase.from('payrolls')
         .update(fresh.numbers).eq('id', id).eq('status', 'draft').select().single();
