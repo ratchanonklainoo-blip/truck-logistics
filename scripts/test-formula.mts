@@ -10,6 +10,7 @@ import {
 } from '../src/lib/payrollCalc.ts';
 import { buildMonthlyReport } from '../src/lib/monthlyReport.ts';
 import { calculateTotals } from '../src/lib/utils.ts';
+import { findDuplicateTrips, odometerWarnings, payMismatch } from '../src/lib/tripChecks.ts';
 
 let pass = 0, fail = 0;
 function eq(name: string, got: unknown, want: unknown) {
@@ -98,7 +99,32 @@ eq('#22 net 4,656.50 เก็บตามจริง', calcPayroll({ driver: {
 eq('ทะเบียนรายงาน: ไม่มี plate → ทะเบียนคนขับ', report('2026-06', [trip()]).driver_summaries[0].truck_license_plate, DR.license_plate);
 eq('ทะเบียนรายงาน: plate ส่วนใหญ่ของเดือน', report('2026-06', [trip({ plate: '71-1833' }), trip({ plate: '71-1833' }), trip()]).driver_summaries[0].truck_license_plate, '71-1833');
 
-console.log('ไม่ทดสอบในสคริปต์นี้ (เป็นหน้าจอ/คิวรี): #8 วันที่เริ่มต้นฟอร์ม, #9–#11 ค่าประจำ (scripts/test-fixed-expenses.mts), #17 snapshot ฐานในใบเงินเดือน, #19 คนขับไม่มีเที่ยว, #20 เตือนซ้ำ, #23 เกิน 1,000 แถว (scripts/verify-m4-live.mts)');
+// 20 เตือนเที่ยวซ้ำ / ไมล์ / ค่าไม่สอดคล้อง (lib/tripChecks ที่ TripForm ใช้)
+{
+  const P = '71-1833/71-1834 เชียงราย';
+  const base = { id: 'n', date: '2026-05-10', driver_id: 'd1', origin: 'เชียงราย', destination: 'ลำพูน', driver_plate: P };
+  const old = [
+    { id: 'a', date: '2026-05-11', driver_id: 'd1', origin: ' เชียงราย', destination: 'ลำพูน', driver_plate: P },           // +1 วัน ซ้ำ
+    { id: 'b', date: '2026-05-12', driver_id: 'd1', origin: 'เชียงราย', destination: 'ลำพูน', driver_plate: P },            // +2 วัน ไม่ซ้ำ
+    { id: 'c', date: '2026-05-10', driver_id: 'd2', origin: 'เชียงราย', destination: 'ลำพูน', plate: '71-1833/71-1834' },   // คนขับอื่น แต่ทะเบียนเดียวกัน → ซ้ำ
+    { id: 'd', date: '2026-05-10', driver_id: 'd2', origin: 'เชียงราย', destination: 'ลำพูน', driver_plate: '70-0001' },     // รถคนละคัน
+    { id: 'e', date: '2026-05-10', driver_id: 'd1', origin: 'เชียงราย', destination: 'พะเยา', driver_plate: P },            // เส้นทางอื่น
+  ];
+  eq('#20 เที่ยวซ้ำ ±1 วัน รถ/ทะเบียนเดียวกัน เส้นทางเดียวกัน', findDuplicateTrips(base, old).map(t => t.id), ['a', 'c']);
+  eq('#20 แก้แถวเดิมไม่เตือนตัวเอง (b อยู่ +1 วันจาก 11 พ.ค. จึงซ้ำจริง)', findDuplicateTrips({ ...base, id: 'a', date: '2026-05-11' }, old).map(t => t.id), ['b', 'c']);
+  eq('#20 แถว -→- ไม่เช็คซ้ำ', findDuplicateTrips({ ...base, origin: '-', destination: '' }, old as never).length, 0);
+  const odo = [{ id: 'x', date: '2026-05-09', driver_id: 'd1', driver_plate: P, origin: 'A', destination: 'B', odometer_start: 1000, odometer_end: 1500 }];
+  eq('#20 ไมล์ถอยหลัง', odometerWarnings({ ...base, odometer_start: 1400, odometer_end: 1800 }, odo).length, 1);
+  eq('#20 ไมล์ซ้ำ', odometerWarnings({ ...base, odometer_start: 1500, odometer_end: 1500 }, odo).length, 1);
+  eq('#20 ไมล์ต่อเนื่องปกติ ไม่เตือน', odometerWarnings({ ...base, odometer_start: 1501, odometer_end: 1800 }, odo), []);
+  eq('#20 รถคันอื่นไม่เตือน', odometerWarnings({ ...base, driver_plate: '70-0001', odometer_start: 1400 }, odo), []);
+  eq('#20 ค่าขนส่ง 0 ค่าเที่ยว > 0 / กลับกัน / ปกติ / แถว -→-', [
+    payMismatch({ ...base, transport_price: 0, trip_pay: 700 }), payMismatch({ ...base, transport_price: 7000, trip_pay: 0 }),
+    payMismatch({ ...base, transport_price: 7000, trip_pay: 700 }), payMismatch({ ...base, origin: '-', destination: '-', trip_pay: 700 }),
+  ], ['no_price', 'no_pay', null, null]);
+}
+
+console.log('ไม่ทดสอบในสคริปต์นี้ (เป็นหน้าจอ/คิวรี): #8 วันที่เริ่มต้นฟอร์ม, #9–#11 ค่าประจำ (scripts/test-fixed-expenses.mts), #17 snapshot ฐานในใบเงินเดือน, #19 คนขับไม่มีเที่ยว, #20/#21 ส่วนหน้าจอ (กล่องเตือน/ช่องติ๊ก), #23 เกิน 1,000 แถว (scripts/verify-m4-live.mts)');
 console.log(`\nunit: ${pass} ผ่าน, ${fail} ไม่ผ่าน`);
 
 // ── เทียบกับข้อมูลจริง (SELECT อย่างเดียว) ──

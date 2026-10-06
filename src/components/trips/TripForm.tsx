@@ -6,12 +6,15 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
   Save, X, Plus, Check, ChevronDown, MapPin,
-  Upload, Eye, Calculator, Fuel, Pencil, Package,
+  Upload, Eye, Calculator, Fuel, Pencil, Package, AlertTriangle,
 } from 'lucide-react';
 import type { TripFormData, Driver } from '@/types';
 import { calcCommission, calcDistance, safeNumber, compressImage } from '@/lib/utils';
 import { COMMISSION_RATE } from '@/lib/constants';
 import { todayBangkok } from '@/lib/dateTh';
+import { createClient } from '@/lib/supabase/client';
+import { fetchAllRows } from '@/lib/fetchAll';
+import { findDuplicateTrips, odometerWarnings, payMismatch, type CheckTrip } from '@/lib/tripChecks';
 
 // ── Zod schema ──────────────────────────────────────────────
 const tripSchema = z.object({
@@ -54,14 +57,26 @@ interface TripFormProps {
   onCancel:         () => void;
   onAddProduct:     (name: string) => Promise<void>;
   onAddLocation:    (name: string) => Promise<void>;
+  /** เจอเที่ยวซ้ำแล้วผู้ใช้เลือก "แก้แถวเดิม" → เปิดแถวนั้นในโหมดแก้ไข */
+  onEditExisting:   (tripId: string) => void;
 }
+
+type ExistingTrip = CheckTrip & {
+  id: string; transport_price: number; trip_pay: number; withdraw: number;
+  drivers: { nickname: string | null; license_plate: string | null } | null;
+};
+type PreSave = { data: TripSchema; dups: ExistingTrip[]; odo: string[] };
+
+const DAY = 86400000;
+const shiftDate = (d: string, days: number) => new Date(Date.parse(`${d}T00:00:00Z`) + days * DAY).toISOString().slice(0, 10);
 
 export default function TripForm({
   drivers, selectedDriverId, initialOdometer,
   products, locations, editingTrip,
-  onSave, onCancel, onAddProduct, onAddLocation,
+  onSave, onCancel, onAddProduct, onAddLocation, onEditExisting,
 }: TripFormProps) {
   const isEditing = !!editingTrip;
+  const [supabase] = useState(() => createClient());
 
   const { register, handleSubmit, watch, setValue, control, reset, formState: { errors, isSubmitting } } =
     useForm<TripSchema>({
@@ -211,15 +226,80 @@ export default function TripForm({
     setValue('receipt_image_url', compressed);
   }, [setValue]);
 
+  // ── จ่ายค่าเที่ยวสดแล้ว: เติมเบิก = ค่าเที่ยว อัตโนมัติ (แก้ได้) แทนการพิมพ์ในหมายเหตุ ──
+  const [paidCash, setPaidCash] = useState(false);
+  const watchedTripPay = watch('trip_pay');
+  useEffect(() => {
+    setPaidCash(!!editingTrip && safeNumber(editingTrip.trip_pay) > 0
+      && safeNumber(editingTrip.withdraw) === safeNumber(editingTrip.trip_pay));
+  }, [editingTrip]);
+  useEffect(() => {
+    if (paidCash) setValue('withdraw', safeNumber(watchedTripPay as number | ''));
+  }, [paidCash, watchedTripPay, setValue]);
+
+  // ── ตรวจก่อนบันทึก ─────────────────────────────────────────
+  const [mismatchOk, setMismatchOk] = useState(false);
+  const [mismatchError, setMismatchError] = useState('');
+  const [preSave, setPreSave] = useState<PreSave | null>(null);
+  const [checkError, setCheckError] = useState('');
+  useEffect(() => { setMismatchOk(false); setMismatchError(''); setPreSave(null); setCheckError(''); }, [editingTrip]);
+
+  const finalize = (data: TripSchema) => ({
+    ...data,
+    origin:      data.origin.trim()      || '-',
+    destination: data.destination.trim() || '-',
+    plate:       data.plate.trim(), // ว่าง → หน้าเที่ยวบันทึกเป็น null
+  });
+
   const onSubmit = async (data: TripSchema) => {
-    const finalData = {
-      ...data,
-      origin:      data.origin.trim()      || '-',
-      destination: data.destination.trim() || '-',
-      plate:       data.plate.trim(), // ว่าง → หน้าเที่ยวบันทึกเป็น null
-    };
-    await onSave(finalData, editingTrip?.id);
+    const fd = finalize(data);
+    const driverPlate = drivers.find(d => d.id === fd.driver_id)?.license_plate || '';
+    const me: CheckTrip = { ...fd, id: editingTrip?.id, driver_plate: driverPlate };
+
+    // 1) ค่าขนส่ง 0 แต่ค่าเที่ยว > 0 (หรือกลับกัน) ต้องติ๊กยืนยัน — กรณีค่าเที่ยว 0 การติ๊ก "ไม่นับค่าเที่ยว" ถือเป็นการยืนยัน
+    const mm = payMismatch(me);
+    if (mm && !mismatchOk && !(mm === 'no_pay' && noTripPay)) {
+      setMismatchError(mm === 'no_price'
+        ? 'ค่าขนส่งเป็น 0 แต่มีค่าเที่ยว — ถ้าถูกต้อง (เช่น ลูกค้าจ่ายแยก) ให้ติ๊กยืนยันด้านล่างก่อนบันทึก'
+        : 'มีค่าขนส่งแต่ค่าเที่ยวเป็น 0 — ติ๊ก "ไม่นับค่าเที่ยว" หรือติ๊กยืนยันด้านล่างก่อนบันทึก');
+      return;
+    }
+    setMismatchError('');
+
+    // 2) เที่ยวซ้ำ (±1 วัน รถ/ทะเบียนเดียวกัน เส้นทางเดียวกัน) + เลขไมล์ซ้ำ/ถอยหลัง — ค้นย้อนหลัง 60 วันถึง +1 วัน
+    setCheckError('');
+    const { data: rows, error } = await fetchAllRows<ExistingTrip>((a, b) => supabase.from('trips')
+      .select('id,date,driver_id,origin,destination,plate,odometer_start,odometer_end,transport_price,trip_pay,withdraw,created_at,'
+        + 'drivers!trips_driver_id_fkey(nickname,license_plate)')
+      .is('deleted_at', null)
+      .gte('date', shiftDate(fd.date, -60)).lte('date', shiftDate(fd.date, 1))
+      .order('id').range(a, b) as never);
+    if (error) {
+      setCheckError(`ตรวจเที่ยวซ้ำไม่สำเร็จ (${error.message}) — ตรวจสัญญาณแล้วกดบันทึกอีกครั้ง`);
+      return;
+    }
+    const others = rows.map(r => ({ ...r, driver_plate: r.drivers?.license_plate || '' }));
+    const dups = findDuplicateTrips(me, others);
+    const odo = odometerWarnings(me, others);
+    if (dups.length > 0 || odo.length > 0) {
+      setPreSave({ data: fd, dups, odo });
+      return;
+    }
+    await onSave(fd, editingTrip?.id);
   };
+
+  const [savingPre, setSavingPre] = useState(false);
+  const confirmPreSave = async () => {
+    if (!preSave) return;
+    const d = preSave.data;
+    setPreSave(null);
+    setSavingPre(true);
+    try { await onSave(d, editingTrip?.id); } finally { setSavingPre(false); }
+  };
+  const mismatchNow = payMismatch({
+    date: '', driver_id: '', origin: watch('origin'), destination: watch('destination'),
+    transport_price: watch('transport_price'), trip_pay: watchedTripPay as number,
+  });
 
   return (
     <div className={`rounded-xl border-2 p-5 ${isEditing ? 'bg-yellow-50 border-yellow-300' : 'bg-blue-50 border-blue-100'}`}>
@@ -484,11 +564,40 @@ export default function TripForm({
               {errors.trip_pay && <p className="text-red-500 text-xs mt-1">{errors.trip_pay.message}</p>}
             </div>
             <div>
-              <label className="form-label">เบิก/หัก (บาท)</label>
+              <label className="form-label">
+                เบิก/หัก (บาท)
+                {paidCash && <span className="text-green-600 text-xs ml-1">= ค่าเที่ยว (จ่ายสด)</span>}
+              </label>
               <input type="number" {...register('withdraw')} className="form-input" placeholder="0" />
         
             </div>
           </div>
+        </div>
+
+        <div className="space-y-2">
+          {/* จ่ายค่าเที่ยวสดแล้ว → เบิก = ค่าเที่ยว (หักออกจากใบเงินเดือน ไม่จ่ายซ้ำ) */}
+          <label className="flex items-center gap-2.5 cursor-pointer select-none w-fit">
+            <input type="checkbox" className="w-4 h-4" checked={paidCash}
+              onChange={e => setPaidCash(e.target.checked)} />
+            <span className="text-sm font-medium text-slate-700">
+              จ่ายค่าเที่ยวสดแล้ว
+              <span className="ml-1.5 text-xs font-normal text-slate-400">(เติมช่องเบิกเท่าค่าเที่ยวให้อัตโนมัติ แก้ได้)</span>
+            </span>
+          </label>
+
+          {/* ค่าขนส่งกับค่าเที่ยวไม่สอดคล้อง → ต้องติ๊กยืนยัน */}
+          {mismatchNow && !(mismatchNow === 'no_pay' && noTripPay) && (
+            <label className="flex items-start gap-2.5 cursor-pointer select-none bg-amber-50 border border-amber-200 rounded-lg p-2">
+              <input type="checkbox" className="w-4 h-4 mt-0.5" checked={mismatchOk}
+                onChange={e => { setMismatchOk(e.target.checked); if (e.target.checked) setMismatchError(''); }} />
+              <span className="text-sm text-amber-800">
+                {mismatchNow === 'no_price'
+                  ? 'ยืนยัน: ค่าขนส่ง 0 แต่จ่ายค่าเที่ยว (ถูกต้อง ไม่ใช่เที่ยวที่บันทึกแยกสองแถว)'
+                  : 'ยืนยัน: มีค่าขนส่งแต่ค่าเที่ยว 0 (ถูกต้อง ไม่ใช่เที่ยวที่บันทึกแยกสองแถว)'}
+              </span>
+            </label>
+          )}
+          {mismatchError && <p className="text-red-600 text-xs">{mismatchError}</p>}
         </div>
 
         {/* หมายเหตุ */}
@@ -498,22 +607,91 @@ export default function TripForm({
         </div>
 
         {/* Submit */}
+        {checkError && <p className="text-red-600 text-sm">{checkError}</p>}
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={isSubmitting || savingPre}
           className={`w-full font-semibold py-2.5 px-4 rounded-lg shadow transition-colors flex justify-center items-center gap-2
             ${isEditing
               ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
               : 'bg-blue-600 hover:bg-blue-700 text-white'}
             disabled:opacity-60 disabled:cursor-not-allowed`}
         >
-          {isSubmitting ? (
+          {isSubmitting || savingPre ? (
             <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> กำลังบันทึก...</>
           ) : (
             <><Save className="w-4 h-4" /> {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกรายการ'}</>
           )}
         </button>
       </form>
+
+      {/* กล่องเตือนก่อนบันทึก: เที่ยวซ้ำ / เลขไมล์ */}
+      {preSave && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 space-y-4"
+               role="alertdialog" aria-modal="true">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              {preSave.dups.length > 0 ? 'มีเที่ยวนี้แล้ว — ตรวจก่อนบันทึก' : 'ตรวจเลขไมล์ก่อนบันทึก'}
+            </h3>
+            {preSave.dups.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm text-slate-600">
+                  พบเที่ยววันใกล้กัน (±1 วัน) รถ/ทะเบียนเดียวกัน เส้นทางเดียวกัน — ถ้าเป็นเที่ยวเดียวกัน ให้แก้แถวเดิม
+                  (เช่น เติมค่าเที่ยว/ค่าขนส่งในแถวเดิม) แทนการเพิ่มแถวใหม่
+                </p>
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 text-slate-500">
+                      <tr>
+                        <th className="text-left px-2 py-1.5">วันที่</th><th className="text-left px-2 py-1.5">คนขับ</th>
+                        <th className="text-left px-2 py-1.5">เส้นทาง</th><th className="text-right px-2 py-1.5">ค่าขนส่ง</th>
+                        <th className="text-right px-2 py-1.5">ค่าเที่ยว</th><th className="text-right px-2 py-1.5">ไมล์</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {preSave.dups.map((t, i) => (
+                        <tr key={t.id}>
+                          <td className="px-2 py-1.5">{t.date}</td>
+                          <td className="px-2 py-1.5">{t.drivers?.nickname || '-'}</td>
+                          <td className="px-2 py-1.5">{t.origin} → {t.destination}</td>
+                          <td className="px-2 py-1.5 text-right">{Number(t.transport_price).toLocaleString()}</td>
+                          <td className="px-2 py-1.5 text-right">{Number(t.trip_pay).toLocaleString()}</td>
+                          <td className="px-2 py-1.5 text-right">{Number(t.odometer_start) || '-'}–{Number(t.odometer_end) || '-'}</td>
+                          <td className="px-2 py-1.5">
+                            <button type="button" autoFocus={i === 0}
+                              onClick={() => { setPreSave(null); onEditExisting(t.id); }}
+                              className="bg-blue-600 hover:bg-blue-700 text-white rounded-md px-2 py-1 whitespace-nowrap">
+                              แก้แถวเดิม
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-slate-400">กด &quot;แก้แถวเดิม&quot; แล้วข้อมูลที่กรอกอยู่จะถูกแทนด้วยแถวเดิมให้แก้</p>
+              </div>
+            )}
+            {preSave.odo.length > 0 && (
+              <ul className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 list-disc pl-6 space-y-1">
+                {preSave.odo.map(w => <li key={w}>{w}</li>)}
+              </ul>
+            )}
+            <div className="flex flex-wrap gap-2 justify-end pt-2 border-t border-slate-100">
+              <button type="button" onClick={() => setPreSave(null)} className="btn-secondary text-sm"
+                autoFocus={preSave.dups.length === 0}>
+                กลับไปแก้
+              </button>
+              <button type="button" onClick={confirmPreSave}
+                className="text-sm px-3 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50">
+                {preSave.dups.length > 0 ? 'บันทึกเป็นเที่ยวใหม่' : 'บันทึกต่อ'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Image Preview Modal */}
       {previewImg && (

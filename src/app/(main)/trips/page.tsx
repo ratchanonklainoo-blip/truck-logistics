@@ -252,6 +252,16 @@ export default function TripsPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
+  // ฟอร์มเตือนเที่ยวซ้ำ → "แก้แถวเดิม": โหลดแถวนั้น (อาจเป็นของคนขับ/เดือนอื่นที่ไม่ได้แสดงในตาราง) มาเปิดในโหมดแก้ไข
+  const handleEditExisting = useCallback(async (tripId: string) => {
+    const { data, error } = await supabase.from('trips').select('*').eq('id', tripId).is('deleted_at', null).maybeSingle();
+    if (error || !data) {
+      alert(`เปิดแถวเดิมไม่สำเร็จ: ${error ? friendlySaveError(error) : 'ไม่พบรายการ (อาจถูกลบแล้ว)'}`);
+      return;
+    }
+    handleEdit(data as Trip);
+  }, [supabase, handleEdit]);
+
   // ── Add product/location to settings ─────────────────────
   const handleAddProduct = useCallback(async (name: string) => {
     const r = await addToSettingList(supabase, 'product_categories', [name]);
@@ -741,6 +751,7 @@ export default function TripsPage() {
             onCancel={() => setEditingTrip(null)}
             onAddProduct={handleAddProduct}
             onAddLocation={handleAddLocation}
+            onEditExisting={handleEditExisting}
           />
         </div>
 
