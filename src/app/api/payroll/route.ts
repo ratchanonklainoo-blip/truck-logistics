@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { computePayroll } from '@/lib/payrollServer';
+import { todayBangkok } from '@/lib/dateTh';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,10 +56,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json();
-  const { driver_id, month_year } = body;
+  const { driver_id, month_year, confirm_locked } = body;
 
   if (!driver_id || !month_year || !/^\d{4}-\d{2}$/.test(month_year)) {
     return NextResponse.json({ error: 'driver_id and month_year required' }, { status: 400 });
+  }
+
+  // เดือนที่ล็อก (ก่อนเดือนปัจจุบัน เวลาไทย): คำนวณ/สร้างใบได้เฉพาะเมื่อผู้ใช้ยืนยันแล้ว (หน้าเงินเดือนส่ง confirm_locked: true หลังกดยืนยัน)
+  if (month_year < todayBangkok().slice(0, 7) && confirm_locked !== true) {
+    return NextResponse.json({
+      error: 'เดือนที่ล็อก: ต้องยืนยันก่อนคำนวณใหม่ (กด "คำนวณใหม่" ที่หน้าเงินเดือนและยืนยันยอดก่อน/หลัง)',
+      code: 'PAYROLL_LOCKED_MONTH',
+    }, { status: 409 });
   }
 
   // ห้ามคำนวณทับใบที่อนุมัติ/จ่ายแล้ว (upsert จะรีเซ็ตสถานะกลับเป็น draft และเขียนตัวเลขทับ)

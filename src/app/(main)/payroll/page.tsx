@@ -220,7 +220,8 @@ export default function PayrollPage() {
         await fetch('/api/payroll', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ driver_id: driver.id, month_year: selectedMonth }),
+          // เดือนที่ล็อก: ผู้ใช้กดยืนยันข้างบนแล้ว → ส่ง confirm_locked (server ปฏิเสธ 409 ถ้าไม่ส่ง)
+          body: JSON.stringify({ driver_id: driver.id, month_year: selectedMonth, ...(locked ? { confirm_locked: true } : {}) }),
         });
       }
       await loadData();
@@ -228,8 +229,9 @@ export default function PayrollPage() {
   };
 
   const recalcOne = async (p: Payroll) => {
-    // เดือนที่ล็อก: ต้องยืนยันพร้อมดูยอดก่อน/หลังก่อนเขียนทับใบร่าง
-    if (isLockedMonth(p.month_year)) {
+    // เดือนที่ล็อก: ต้องยืนยันพร้อมดูยอดก่อน/หลังก่อนเขียนทับใบร่าง (แล้วส่ง confirm_locked ให้ server)
+    const locked = isLockedMonth(p.month_year);
+    if (locked) {
       if (!p.preview) {
         alert(`คำนวณยอดใหม่ไม่ได้: ${p.preview_error || 'ยังโหลดยอดตามสูตรปัจจุบันไม่สำเร็จ'} — กดรีเฟรชแล้วลองใหม่`);
         return;
@@ -249,7 +251,7 @@ export default function PayrollPage() {
     const res = await fetch('/api/payroll', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ driver_id: p.driver_id, month_year: selectedMonth }),
+      body: JSON.stringify({ driver_id: p.driver_id, month_year: p.month_year, ...(locked ? { confirm_locked: true } : {}) }),
     });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
