@@ -38,6 +38,7 @@ const tripSchema = z.object({
   withdraw:        z.coerce.number().min(0).default(0),
   remarks:         z.string().default(''),
   receipt_image_url: z.string().nullable().default(null),
+  plate:           z.string().default(''), // ทะเบียนรถของเที่ยว — ว่าง = ใช้ทะเบียนของคนขับ
 });
 
 type TripSchema = z.infer<typeof tripSchema>;
@@ -84,6 +85,7 @@ export default function TripForm({
         withdraw:        0,
         remarks:         '',
         receipt_image_url: null,
+        plate:           drivers.find(d => d.id === selectedDriverId)?.license_plate || '',
       },
     });
 
@@ -109,6 +111,7 @@ export default function TripForm({
         withdraw:        safeNumber(editingTrip.withdraw),
         remarks:         editingTrip.remarks,
         receipt_image_url: editingTrip.receipt_image_url ?? null,
+        plate:           editingTrip.plate ?? '', // เที่ยวเก่าไม่มีทะเบียน → เว้นว่าง (ไม่ backfill)
       });
     } else {
       reset({
@@ -119,9 +122,17 @@ export default function TripForm({
         odometer_start:  initialOdometer, odometer_end: 0, distance: 0,
         fuel_cost: 0, fuel_litres: 0, other_item: '', other_cost: 0,
         withdraw: 0, remarks: '', receipt_image_url: null,
+        plate: drivers.find(d => d.id === selectedDriverId)?.license_plate || '',
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingTrip, selectedDriverId, initialOdometer, reset]);
+
+  // เพิ่มเที่ยวใหม่: เปลี่ยนคนขับ → ตั้งทะเบียนเป็นของคนขับคนนั้น (แก้เองได้ภายหลัง)
+  const handleDriverChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (isEditing) return;
+    setValue('plate', drivers.find(d => d.id === e.target.value)?.license_plate || '');
+  };
 
   // ── No commission flag ──────────────────────────────────
   const [noTripPay, setNoTripPay] = useState(false);
@@ -205,6 +216,7 @@ export default function TripForm({
       ...data,
       origin:      data.origin.trim()      || '-',
       destination: data.destination.trim() || '-',
+      plate:       data.plate.trim(), // ว่าง → หน้าเที่ยวบันทึกเป็น null
     };
     await onSave(finalData, editingTrip?.id);
   };
@@ -234,11 +246,19 @@ export default function TripForm({
         {/* คนขับ */}
         <div>
           <label className="form-label">คนขับ</label>
-          <select {...register('driver_id')} className="form-input">
+          <select {...register('driver_id', { onChange: handleDriverChange })} className="form-input">
             {drivers.map(d => (
               <option key={d.id} value={d.id}>{d.nickname} — {d.name}{d.is_active === false ? ' (ปิดใช้งาน)' : ''}</option>
             ))}
           </select>
+        </div>
+
+        {/* ทะเบียนรถของเที่ยว */}
+        <div>
+          <label className="form-label">ทะเบียนรถ</label>
+          <input {...register('plate')} className="form-input" autoComplete="off"
+            placeholder={`ว่าง = ใช้ทะเบียนของคนขับ (${drivers.find(d => d.id === watch('driver_id'))?.license_plate || '-'})`} />
+          <p className="text-xs text-slate-400 mt-1">ตั้งจากทะเบียนของคนขับ แก้ได้ถ้าวันนี้ขับคันอื่น</p>
         </div>
 
         {/* คำนวณระยะทาง */}

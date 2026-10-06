@@ -217,6 +217,7 @@ export default function TripsPage() {
       fuel_litres:     Number(formData.fuel_litres)     || 0,
       other_cost:      Number(formData.other_cost)      || 0,
       withdraw:        Number(formData.withdraw)        || 0,
+      plate:           (formData.plate ?? '').trim() || null, // ทะเบียนต่อเที่ยว ว่าง = null (ใช้ทะเบียนคนขับ)
       created_by:      user?.id,
     };
 
@@ -282,7 +283,7 @@ export default function TripsPage() {
   const handleExportCSV = () => {
     const headers = ['วันที่','คนขับ','สินค้า','น้ำหนัก','ต้นทาง','ปลายทาง',
                      'ไมล์ต้น','ไมล์ปลาย','ระยะ(กม.)','ค่าน้ำมัน','ลิตร',
-                     'ค่าขนส่ง','ค่าเที่ยว','เบิก','รายการอื่นๆ','ค่าอื่นๆ','หมายเหตุ'];
+                     'ค่าขนส่ง','ค่าเที่ยว','เบิก','รายการอื่นๆ','ค่าอื่นๆ','หมายเหตุ','ทะเบียน'];
     const rows = currentDriverTrips.map(t => [
       t.date, selectedDriver?.name || '',
       escapeCsvField(t.product), escapeCsvField(t.weight),
@@ -290,6 +291,8 @@ export default function TripsPage() {
       t.odometer_start, t.odometer_end, t.distance,
       t.fuel_cost, t.fuel_litres, t.transport_price, t.trip_pay,
       t.withdraw, escapeCsvField(t.other_item), t.other_cost, escapeCsvField(t.remarks),
+      // คอลัมน์ท้ายสุด (นำเข้า CSV อ่านถึงคอลัมน์หมายเหตุ ไม่กระทบ): trips.plate ถ้ามี ไม่มีใช้ทะเบียนคนขับ
+      escapeCsvField(t.plate || selectedDriver?.license_plate || ''),
     ]);
     const csv = ['﻿' + headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const a = document.createElement('a');

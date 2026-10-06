@@ -56,6 +56,7 @@ export interface Trip {
   withdraw: number;
   remarks: string;
   receipt_image_url: string | null;
+  plate?: string | null; // ทะเบียนรถของเที่ยว (migration 022) ว่าง = ใช้ทะเบียนของคนขับ
   expense_notes: unknown | null;
   created_by: string | null;
   created_at: string;
@@ -85,6 +86,7 @@ export interface TripFormData {
   withdraw: number | '';
   remarks: string;
   receipt_image_url?: string | null;
+  plate?: string | null;
 }
 
 export interface TripTotals {
