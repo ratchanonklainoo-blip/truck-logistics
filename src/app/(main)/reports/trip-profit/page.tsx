@@ -8,7 +8,13 @@ import { ChevronLeft, ChevronRight, RefreshCw, Image as ImageIcon, X, ExternalLi
 import { formatCurrency, formatNumber, formatThaiDate, adToBE } from '@/lib/utils';
 import { THAI_MONTHS } from '@/lib/constants';
 import { todayBangkok } from '@/lib/dateTh';
-import { summarizeTrips, type TripProfitResult, type TPTrip, type ProfitColor } from '@/lib/tripProfit';
+import { summarizeTrips, reconcileWithMonthlyReport, type TripProfitResult, type TPTrip, type ProfitColor } from '@/lib/tripProfit';
+
+// เฉพาะฟิลด์ที่ใช้กระทบยอดจาก /api/reports/monthly
+interface MonthlyReportLite {
+  totals: { net_profit: number; total_driver_cost: number; total_extra_expenses: number };
+  driver_summaries: { total_commission: number }[];
+}
 
 function displayMonthYear(my: string): string {
   const [y, m] = my.split('-').map(Number);
@@ -72,6 +78,26 @@ export default function TripProfitPage() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [monthYear, margin, marginOk, reloadKey]);
 
+  // รายงานรายเดือนเดิม (อ่านอย่างเดียว) — ใช้แสดงบรรทัดกระทบยอดว่าตัวเลขหน้านี้ไม่ขัดกับรายงาน
+  const [report, setReport] = useState<MonthlyReportLite | null>(null);
+  const [reportError, setReportError] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    setReport(null); setReportError('');
+    (async () => {
+      try {
+        const res = await fetch(`/api/reports/monthly?month_year=${monthYear}`);
+        const j = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok) setReportError(j.error || `โหลดรายงานรายเดือนไม่สำเร็จ (${res.status})`);
+        else setReport(j.data);
+      } catch (e) {
+        if (!cancelled) setReportError(e instanceof Error ? e.message : 'โหลดรายงานรายเดือนไม่สำเร็จ');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [monthYear, reloadKey]);
+
   useEffect(() => { setFDate(''); }, [monthYear]);
   // ลิงก์ตรงเดือน: /reports/trip-profit?month=YYYY-MM
   useEffect(() => {
@@ -108,6 +134,18 @@ export default function TripProfitPage() {
     (!fDate || o.date === fDate) && (!fVehicle || o.vehicle === fVehicle) && (!fDriver || o.driver_name === fDriver)
     && !fProduct && !fRoute.trim()), [data, fDate, fVehicle, fDriver, fProduct, fRoute]);
   const totals = useMemo(() => summarizeTrips(trips, others), [trips, others]);
+  // Daily Summary กรองได้เฉพาะวัน/รถ/คนขับ (ยอดของวันเป็นของรถทั้งคัน ไม่แยกตามสินค้า/เส้นทาง)
+  const days = useMemo(() => (data?.days || []).filter(d =>
+    (!fDate || d.date === fDate) && (!fVehicle || d.vehicle === fVehicle) && (!fDriver || d.drivers.includes(fDriver))),
+  [data, fDate, fVehicle, fDriver]);
+  const pending = useMemo(() => (data?.pending || []).filter(p =>
+    (!fDate || p.from === fDate) && (!fVehicle || p.vehicle === fVehicle)), [data, fDate, fVehicle]);
+  const recon = useMemo(() => {
+    if (!data || !report) return null;
+    const commission = report.driver_summaries.reduce((a, s) => a + (Number(s.total_commission) || 0), 0);
+    return reconcileWithMonthlyReport(data.totals, { ...report.totals, total_commission: commission });
+  }, [data, report]);
+  const daySum = (f: (d: (typeof days)[number]) => number) => Math.round(days.reduce((a, d) => a + Math.round(f(d) * 100), 0)) / 100;
 
   return (
     <div className="p-4 sm:p-6 space-y-5">
@@ -269,6 +307,154 @@ export default function TripProfitPage() {
             </div>
           </div>
           {filtersOn && <div className="text-xs text-slate-500">ตัวเลขด้านบนเป็นผลรวมตามตัวกรอง — การจัดสรรน้ำมันคำนวณจากทั้งเดือนก่อนกรอง</div>}
+
+          {/* ── Daily Summary รายวัน/รายคัน ── */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold text-slate-700 text-sm">สรุปรายวัน / รายคัน ({days.length})</span>
+              {(fProduct || fRoute.trim()) && <span className="text-xs text-amber-600">ส่วนนี้ไม่กรองตามสินค้า/เส้นทาง (ยอดของวันเป็นของรถทั้งคัน)</span>}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-[#1E3A5F] text-white text-xs">
+                    {['วันที่', 'รถ / คนขับ', 'เที่ยว', 'ระยะ (กม.)', 'น้ำมันของวัน', 'ยกมา', 'น้ำมันจัดสรร', 'ค่าเที่ยว', 'ต้นทุน', 'รายได้', 'กำไร', 'นอกเที่ยว']
+                      .map((h, i) => <th key={h} className={`px-3 py-2.5 font-semibold whitespace-nowrap ${i < 2 ? 'text-left' : i === 11 ? 'text-left' : 'text-right'}`}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {days.length === 0 && <tr><td colSpan={12} className="text-center py-8 text-slate-400">ไม่มีข้อมูล</td></tr>}
+                  {days.map(d => {
+                    const fuelShown = d.trip_count === 0 ? 0 : d.fuel_pool + d.fuel_estimated;
+                    return (
+                      <tr key={`${d.vehicle}|${d.date}`} className={d.trip_count === 0 ? 'bg-slate-50 text-slate-500' : COLOR_ROW[profitColorOf(d.profit, d.revenue)]}>
+                        <td className="px-3 py-2 whitespace-nowrap">{formatThaiDate(d.date, true)}</td>
+                        <td className="px-3 py-2 whitespace-nowrap text-xs">{d.plate_label}<div className="text-slate-400">{d.drivers.join(', ')}</div></td>
+                        <td className="px-3 py-2 text-right">{d.trip_count || '-'}</td>
+                        <td className="px-3 py-2 text-right">{d.km ? formatNumber(d.km) : '-'}</td>
+                        <td className="px-3 py-2 text-right">{d.fuel_own ? baht(d.fuel_own) : '-'}</td>
+                        <td className="px-3 py-2 text-right text-xs whitespace-nowrap">
+                          {d.carried_in.length ? d.carried_in.map(c => <div key={c.from}>{baht(c.amount)} <span className="text-slate-400">(จาก {formatThaiDate(c.from, true)})</span></div>) : '-'}
+                        </td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                          {d.trip_count === 0
+                            ? (d.carried_out ? <span className="text-xs text-amber-700">ไม่มีเที่ยว → ยกไปเที่ยวถัดไป {baht(d.carried_out)}</span> : '-')
+                            : fuelShown === 0 ? <span className="text-xs text-slate-400">ไม่มีข้อมูลน้ำมัน/ระยะทาง</span>
+                            : <>{baht(fuelShown)}{d.fuel_estimated > 0 && <div className="text-[10px] font-semibold text-amber-600">ประมาณการ {baht(d.fuel_estimated)}{d.est_rate ? ` (${baht(d.est_rate)} บ./กม.)` : ''}</div>}</>}
+                        </td>
+                        <td className="px-3 py-2 text-right">{d.trip_count ? baht(d.pay) : '-'}</td>
+                        <td className="px-3 py-2 text-right">{d.trip_count ? baht(d.cost) : '-'}</td>
+                        <td className="px-3 py-2 text-right">{d.trip_count ? baht(d.revenue) : '-'}</td>
+                        <td className={`px-3 py-2 text-right font-semibold ${d.trip_count ? COLOR_TEXT[profitColorOf(d.profit, d.revenue)] : ''}`}>{d.trip_count ? baht(d.profit) : '-'}</td>
+                        <td className="px-3 py-2 text-xs whitespace-nowrap">
+                          {d.off_trip.rows === 0 ? '-' : <>
+                            {d.off_trip.rows} แถว{d.off_trip.km ? ` · วิ่งเปล่า ${formatNumber(d.off_trip.km)} กม.` : ''}
+                            {d.off_trip.other ? ` · ค่าใช้จ่ายอื่น ${baht(d.off_trip.other)}` : ''}
+                            {d.off_trip.revenue ? ` · รายได้ ${baht(d.off_trip.revenue)}` : ''}
+                            {d.off_trip.pay ? ` · ค่าเที่ยว ${baht(d.off_trip.pay)}` : ''}
+                          </>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {pending.map(p => (
+                    <tr key={`pending|${p.vehicle}|${p.from}`} className="bg-amber-50 text-amber-800 text-xs">
+                      <td className="px-3 py-2 whitespace-nowrap">{formatThaiDate(p.from, true)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">{p.plate_label}</td>
+                      <td className="px-3 py-2" colSpan={10}>น้ำมันที่ยังไม่ได้จัดสรร {baht(p.amount)} บาท — ยังไม่มีเที่ยวถัดไปในเดือนนี้ (จะยกไปรวมกับเที่ยวถัดไปของรถคันนี้)</td>
+                    </tr>
+                  ))}
+                </tbody>
+                {days.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-slate-100 font-semibold text-slate-700">
+                      <td className="px-3 py-2" colSpan={2}>รวม</td>
+                      <td className="px-3 py-2 text-right">{daySum(d => d.trip_count)}</td>
+                      <td className="px-3 py-2 text-right">{formatNumber(daySum(d => d.km))}</td>
+                      <td className="px-3 py-2 text-right">{baht(daySum(d => d.fuel_own))}</td>
+                      <td className="px-3 py-2 text-right">{baht(daySum(d => d.carried_in.reduce((a, c) => a + c.amount, 0)))}</td>
+                      <td className="px-3 py-2 text-right">{baht(daySum(d => (d.trip_count ? d.fuel_pool + d.fuel_estimated : 0)))}</td>
+                      <td className="px-3 py-2 text-right">{baht(daySum(d => d.pay))}</td>
+                      <td className="px-3 py-2 text-right">{baht(daySum(d => d.cost))}</td>
+                      <td className="px-3 py-2 text-right">{baht(daySum(d => d.revenue))}</td>
+                      <td className="px-3 py-2 text-right">{baht(daySum(d => d.profit))}</td>
+                      <td className="px-3 py-2 text-xs">ค่าใช้จ่ายอื่นนอกเที่ยว {baht(daySum(d => d.off_trip.other))}</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+
+          {/* ── ค่าใช้จ่ายอื่นของเดือน (ไม่ใช่ต้นทุนเที่ยว) ── */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold text-slate-700 text-sm">ค่าใช้จ่ายอื่นของเดือน ({others.length} รายการ)</span>
+              <span className="text-xs text-slate-500">ค่าใช้จ่ายของบริษัททั้งเดือน ไม่นำไปคิดเป็นต้นทุนของเที่ยวใด</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-[#1E3A5F] text-white text-xs">
+                    {['วันที่', 'รถ / คนขับ', 'รายการ', 'หมายเหตุ', 'เที่ยว', 'จำนวนเงิน'].map((h, i) =>
+                      <th key={h} className={`px-3 py-2.5 font-semibold whitespace-nowrap ${i === 5 ? 'text-right' : 'text-left'}`}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {others.length === 0 && (
+                    <tr><td colSpan={6} className="text-center py-8 text-slate-400">
+                      {fProduct || fRoute.trim() ? 'ไม่แสดงเมื่อกรองสินค้า/เส้นทาง' : 'ไม่มีค่าใช้จ่ายอื่นในเดือน/ตัวกรองนี้'}
+                    </td></tr>
+                  )}
+                  {others.map(o => (
+                    <tr key={o.id}>
+                      <td className="px-3 py-2 whitespace-nowrap">{formatThaiDate(o.date, true)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-xs">{o.plate_label}<div className="text-slate-400">{o.driver_name}</div></td>
+                      <td className="px-3 py-2 font-medium text-slate-700">{o.item || '-'}</td>
+                      <td className="px-3 py-2 text-xs text-slate-500">{o.remarks || '-'}</td>
+                      <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{o.route || 'ไม่ใช่เที่ยว (ซ่อม/วิ่งเปล่า)'}</td>
+                      <td className="px-3 py-2 text-right">{baht(o.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                {others.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-slate-100 font-semibold text-slate-700">
+                      <td className="px-3 py-2" colSpan={5}>รวมค่าใช้จ่ายอื่นของเดือน</td>
+                      <td className="px-3 py-2 text-right">{baht(totals.other_expenses)}</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+
+          {/* ── กระทบยอดกับรายงานรายเดือน (เฉพาะเมื่อไม่กรอง) ── */}
+          {!filtersOn && (
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 text-sm">
+              <div className="font-semibold text-slate-700 mb-2">กระทบยอดกับรายงานรายเดือน (กำไรก่อนหักค่าใช้จ่ายประจำ)</div>
+              {reportError && <div className="text-red-600 text-xs">{reportError}</div>}
+              {!recon && !reportError && <div className="text-slate-400 text-xs">กำลังโหลดรายงานรายเดือน...</div>}
+              {recon && (
+                <div className="max-w-xl space-y-1">
+                  {recon.lines.filter(l => l.amount !== 0 || l.label === 'กำไรจากเที่ยว').map(l => (
+                    <div key={l.label} className="flex justify-between gap-4">
+                      <span className="text-slate-600">{l.label}</span>
+                      <span className={l.amount < 0 ? 'text-red-600' : 'text-slate-800'}>{l.amount < 0 ? '−' : '+'}{baht(Math.abs(l.amount))}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between gap-4 border-t border-slate-200 pt-1 font-semibold">
+                    <span>= กำไรตามรายงานรายเดือน</span><span>{baht(recon.total)}</span>
+                  </div>
+                  <div className={`text-xs ${recon.diff === 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                    {recon.diff === 0
+                      ? `✓ ตรงกับรายงานรายเดือน (${baht(recon.report_net_profit)})`
+                      : `⚠ ต่างจากรายงานรายเดือน (${baht(recon.report_net_profit)}) อยู่ ${baht(recon.diff)} — แจ้งผู้ดูแลระบบ`}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
 
