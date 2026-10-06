@@ -34,6 +34,7 @@ export interface EmploymentLike {
   social_security?: number | string | null;
   start_date?: string | null;   // 'YYYY-MM-DD' ว่าง = ไม่ระบุ (ถือว่าทำงานมาก่อน)
   end_date?: string | null;     // 'YYYY-MM-DD' วันทำงานวันสุดท้าย (ตั้งตอนปิดใช้งาน)
+  base_salary_start?: string | null; // 'YYYY-MM-01' เดือนที่เริ่มคิดเงินเดือนฐาน (migration 023) ว่าง = ใช้กติกา start_date
   is_active?: boolean | null;
   deleted_at?: string | null;
 }
@@ -63,15 +64,29 @@ export function startedMidMonth(d: EmploymentLike, month_year: string): boolean 
   return !!d.start_date && d.start_date > from && d.start_date <= to;
 }
 
+/** ยังไม่ถึงเดือนเริ่มคิดเงินเดือนฐาน (ช่วงทดลองงาน): มี base_salary_start และเดือนนี้อยู่ก่อนเดือนนั้น */
+export function beforeBaseSalaryStart(d: EmploymentLike, month_year: string): boolean {
+  return !!d.base_salary_start && monthBounds(month_year).from < d.base_salary_start.slice(0, 7) + '-01';
+}
+
 /** เงินเดือนฐาน + ประกันสังคมของเดือน
- *  - เริ่มกลางเดือน → ฐาน 0 และไม่หักประกันสังคมจากฐาน
  *  - ไม่ได้ทำงานในเดือนนั้น (ก่อนเริ่ม/หลังวันสุดท้าย) → 0 ทั้งคู่
- *  - เริ่มวันที่ 1 หรือไม่มี start_date → ฐานเต็มตามเดิม */
+ *  - มี base_salary_start: ก่อนเดือนนั้น → 0 ทั้งคู่ (ทดลองงาน มีแต่ค่าเที่ยว), ตั้งแต่เดือนนั้น → ฐานเต็ม
+ *  - ไม่มี base_salary_start: เริ่มกลางเดือน → 0 ทั้งคู่; เริ่มวันที่ 1 หรือไม่มี start_date → ฐานเต็มตามเดิม */
 export function baseForMonth(d: EmploymentLike, month_year: string): { base_salary: number; social_security: number } {
-  if (!isEmployedInMonth(d, month_year) || startedMidMonth(d, month_year)) {
+  const noBase = d.base_salary_start ? beforeBaseSalaryStart(d, month_year) : startedMidMonth(d, month_year);
+  if (!isEmployedInMonth(d, month_year) || noBase) {
     return { base_salary: 0, social_security: 0 };
   }
   return { base_salary: Number(d.base_salary) || 0, social_security: Number(d.social_security) || 0 };
+}
+
+/** เดือนเริ่มคิดเงินเดือนฐานหลังทดลองงาน n เดือนเต็ม ('YYYY-MM-01'):
+ *  เดือนเต็มแรก = เดือนที่เริ่มงานถ้าเริ่มวันที่ 1 ไม่งั้นเดือนถัดไป แล้วบวก n เดือน (เช่น เริ่ม 26 พ.ค. → ทดลอง มิ.ย.–ส.ค. → 1 ก.ย.) */
+export function probationBaseStart(start_date: string, months = 3): string {
+  const [y, m, day] = start_date.split('-').map(Number);
+  const idx = y * 12 + (m - 1) + (day > 1 ? 1 : 0) + months;
+  return `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, '0')}-01`;
 }
 
 // ─── ใบเงินเดือน ──────────────────────────────────────────────

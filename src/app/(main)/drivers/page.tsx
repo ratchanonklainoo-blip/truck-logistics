@@ -11,7 +11,7 @@ import {
 import type { Driver } from '@/types';
 import { formatCurrency, formatThaiDate } from '@/lib/utils';
 import { countRealTrips } from '@/lib/tripCount';
-import { sumTripPay } from '@/lib/payrollCalc';
+import { sumTripPay, probationBaseStart } from '@/lib/payrollCalc';
 import { todayBangkok } from '@/lib/dateTh';
 import SaveLocationInline from '@/components/drivers/SaveLocationInline';
 import MapsLink from '@/components/ui/MapsLink';
@@ -35,7 +35,7 @@ const EMPTY_FORM = {
   driver_key: '', name: '', nickname: '', license_plate: '',
   bank_account: '', social_security: '750', base_salary: '5000',
   commission_rate: '0.10', monthly_advance_limit: '5000',
-  line_user_id: '', phone: '', start_date: '',
+  line_user_id: '', phone: '', start_date: '', base_salary_start: '', // base_salary_start = 'YYYY-MM'
 };
 
 // สร้างรหัสคนขับ DR001, DR002, ... ตัวถัดไปที่ยังไม่มีใครใช้ (เทียบแบบไม่สนตัวพิมพ์เล็ก/ใหญ่ รวมคนขับที่ถูกลบ เพราะ UNIQUE ครอบทุกแถว)
@@ -145,6 +145,7 @@ export default function DriversPage() {
       monthly_advance_limit: form.monthly_advance_limit === '' ? 0 : Number(form.monthly_advance_limit),
       line_user_id: form.line_user_id || null,
       start_date: form.start_date || null,
+      base_salary_start: form.base_salary_start ? `${form.base_salary_start}-01` : null,
       updated_at: new Date().toISOString(),
     };
     try {
@@ -243,6 +244,7 @@ export default function DriversPage() {
       line_user_id: d.line_user_id || '',
       phone: '',
       start_date: d.start_date || '',
+      base_salary_start: d.base_salary_start ? d.base_salary_start.slice(0, 7) : '',
     });
     setShowForm(true);
   };
@@ -580,6 +582,27 @@ export default function DriversPage() {
                   เริ่มหลังวันที่ 1 → เดือนแรกไม่มีเงินเดือนฐานและไม่หักประกันสังคม (ได้ค่าเที่ยวตามจริง) · เว้นว่าง = ฐานเต็มทุกเดือน
                 </p>
               </div>
+
+              {/* เดือนเริ่มคิดเงินเดือนฐาน (ทดลองงาน) */}
+              <div>
+                <label className="form-label">เริ่มคิดเงินเดือนฐานตั้งแต่เดือน</label>
+                <div className="flex gap-2 items-center flex-wrap">
+                  <input type="month" className="form-input flex-1 min-w-[10rem]" value={form.base_salary_start}
+                    onChange={e => f('base_salary_start', e.target.value)} />
+                  <button type="button" className="btn-secondary text-sm" disabled={!form.start_date}
+                    title={form.start_date ? '' : 'กรอกวันเริ่มงานก่อน'}
+                    onClick={() => f('base_salary_start', probationBaseStart(form.start_date, 3).slice(0, 7))}>
+                    ทดลองงาน 3 เดือน
+                  </button>
+                  {form.base_salary_start && (
+                    <button type="button" className="text-sm text-slate-500 underline" onClick={() => f('base_salary_start', '')}>ล้าง</button>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  เดือนก่อนเดือนนี้ไม่มีเงินเดือนฐานและไม่หักประกันสังคม (ได้ค่าเที่ยวตามจริง) · ตั้งแต่เดือนนี้ฐานเต็ม · เว้นว่าง = ใช้กติกาวันเริ่มงานด้านบน
+                </p>
+              </div>
+
 
               {saveError && (
                 <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg">

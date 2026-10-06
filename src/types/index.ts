@@ -15,6 +15,7 @@ export interface Driver {
   is_active: boolean;
   start_date?: string | null; // วันเริ่มงาน (migration 022) — เริ่มหลังวันที่ 1 ของเดือน เดือนนั้นไม่มีเงินฐาน
   end_date?: string | null;   // วันทำงานวันสุดท้าย ตั้งตอนปิดใช้งาน
+  base_salary_start?: string | null; // เดือนเริ่มคิดเงินเดือนฐาน 'YYYY-MM-01' (migration 023) — เดือนก่อนหน้าไม่มีฐาน (ทดลองงาน)
   created_at: string;
   updated_at: string;
   deleted_at: string | null;

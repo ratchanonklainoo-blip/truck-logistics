@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { isRealTrip, countRealTrips } from '../src/lib/tripCount.ts';
 import {
-  tripPayOf, calcPayroll, baseForMonth, isEmployedInMonth, monthBounds, payrollChangedFields,
+  tripPayOf, calcPayroll, baseForMonth, isEmployedInMonth, monthBounds, payrollChangedFields, probationBaseStart,
 } from '../src/lib/payrollCalc.ts';
 import { buildMonthlyReport } from '../src/lib/monthlyReport.ts';
 import { calculateTotals } from '../src/lib/utils.ts';
@@ -89,6 +89,39 @@ eq('#16 trip_pay null → ทุกจุดได้ 0 เท่ากัน (�
   eq('#18 ไม่มี start_date → ฐานเต็ม', baseForMonth({ ...mid, start_date: null }, '2026-06').base_salary, 6000);
   eq('#18 ก่อนเริ่มงาน → ไม่ทำงาน', isEmployedInMonth(mid, '2026-05'), false);
   eq('#18 รายงาน มิ.ย. ไม่หักฐาน', report('2026-06', [trip({ drivers: mid })]).totals.total_driver_cost, 700);
+}
+// 023 base_salary_start (ทดลองงาน)
+{
+  const ek = { ...DR, base_salary: 5000, social_security: 435, start_date: '2026-05-26', base_salary_start: '2026-09-01' };
+  const months = ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'];
+  eq('#P1 ทดลองงาน 3 เดือน: เริ่ม 26 พ.ค. ฐานเริ่ม ก.ย. → เม.ย.–ส.ค. 0, ก.ย.–ต.ค. เต็ม',
+    months.map(m => baseForMonth(ek, m).base_salary), [0, 0, 0, 0, 0, 5000, 5000]);
+  eq('#P1 ช่วงทดลองงานไม่หักประกันสังคม / ก.ย. หักเต็ม', [baseForMonth(ek, '2026-07').social_security, baseForMonth(ek, '2026-09').social_security], [0, 435]);
+  eq('#P1 ใบ ก.ค. ช่วงทดลองงาน = ค่าเที่ยวอย่างเดียว', calcPayroll({ driver: ek, month_year: '2026-07', trips: [trip({ date: '2026-07-10' })] }).net_pay, 700);
+  eq('#P1 รายงาน ก.ค. ไม่หักฐาน / ก.ย. หักฐาน', [
+    report('2026-07', [trip({ date: '2026-07-10', drivers: ek })]).totals.total_driver_cost,
+    report('2026-09', [trip({ date: '2026-09-10', drivers: ek })]).totals.total_driver_cost,
+  ], [700, 5700]);
+  eq('#P2 probationBaseStart: 26 พ.ค. → ก.ย. / 1 มิ.ย. → ก.ย. / 15 พ.ย. 2026 → มี.ค. 2027 (ข้ามปี) / 1 ต.ค. → ม.ค. 2027 / 2 ธ.ค. → เม.ย. 2027',
+    [probationBaseStart('2026-05-26'), probationBaseStart('2026-06-01'), probationBaseStart('2026-11-15'), probationBaseStart('2026-10-01'), probationBaseStart('2026-12-02')],
+    ['2026-09-01', '2026-09-01', '2027-03-01', '2027-01-01', '2027-04-01']);
+  const y = { ...DR, start_date: '2026-11-15', base_salary_start: '2027-03-01' };
+  eq('#P2 ข้ามปี: ธ.ค. 2026–ก.พ. 2027 ฐาน 0, มี.ค. 2027 เต็ม',
+    ['2026-11', '2026-12', '2027-01', '2027-02', '2027-03'].map(m => baseForMonth(y, m).base_salary), [0, 0, 0, 0, 5000]);
+  // ค่าว่าง / คนขับเดิมไม่มีค่า → ผลเท่ากติกาเดิมทุกกรณี
+  const legacy = (d: typeof DR & { start_date: string | null }) => months.map(m => baseForMonth(d, m));
+  for (const [label, d] of [['ไม่มีทั้งคู่', DR], ['เริ่มกลางเดือน', { ...DR, start_date: '2026-06-15' }], ['เริ่มวันที่ 1', { ...DR, start_date: '2026-06-01' }],
+    ['ปิดใช้งาน', { ...DR, is_active: false, end_date: '2026-08-10' }]] as const) {
+    eq(`#P3 ค่าว่าง (${label}): null / undefined / '' ให้ผลเท่ากติกาเดิม`, [
+      months.map(m => baseForMonth({ ...d, base_salary_start: null }, m)),
+      months.map(m => baseForMonth({ ...d, base_salary_start: '' }, m)),
+    ], [legacy(d as never), legacy(d as never)]);
+  }
+  eq('#P3 ฐานเริ่มเดือนเดียวกับเริ่มงานกลางเดือน → ใช้ base_salary_start (เดือนนั้นฐานเต็ม)',
+    baseForMonth({ ...DR, start_date: '2026-06-15', base_salary_start: '2026-06-01' }, '2026-06').base_salary, 5000);
+  eq('#P3 ก่อนเริ่มงาน/หลังวันสุดท้าย ยังเป็น 0 แม้ถึงเดือนฐาน',
+    [baseForMonth({ ...DR, start_date: '2026-06-15', base_salary_start: '2026-01-01' }, '2026-05').base_salary,
+     baseForMonth({ ...DR, is_active: false, end_date: '2026-08-10', base_salary_start: '2026-01-01' }, '2026-09').base_salary], [0, 0]);
 }
 // 21 จ่ายสด: withdraw = trip_pay → สุทธิไม่รวม 700 นี้
 eq('#21 จ่ายสด 700 → สุทธิ = ฐาน − ประกันสังคม', calcPayroll({ driver: DR, month_year: '2026-06', trips: [trip({ withdraw: 700 })] }).net_pay, 5000 - 435);
@@ -190,6 +223,28 @@ if (process.argv.includes('--live')) {
       if (ok) pass++; else fail++;
       console.log(`${ok ? 'PASS' : 'FAIL'}  สลิป ${ym} ${String(d.nickname)}: ก่อน ${before} หลัง ${after} (รายได้อื่น ${extra.other_additions} หักอื่น ${extra.other_deductions})${extra.other_additions || extra.other_deductions ? '' : ' — ต้องเท่าเดิม'}`);
     }
+  }
+  // จำลองค่าของเอก (CEO 2026-10-06: start_date 2026-05-26, base_salary_start 2026-09-01) — ใส่ค่าในหน่วยความจำเท่านั้น ไม่เขียน DB
+  // เทียบรายงาน/ใบเงินเดือนของเอกแต่ละเดือน: ค่าใน DB ตอนนี้ vs ถ้าตั้งค่าแล้ว
+  const EK_ID = '72fc8e4d-1a25-49dd-bd2a-e5fcdc30c109';
+  const EK_SET = { start_date: '2026-05-26', base_salary_start: '2026-09-01' };
+  const ekMonths = ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'];
+  for (const ym of ekMonths) {
+    const d = cache[ym] ??= loadMonth(ym);
+    const withEk = (d.trips as Record<string, unknown>[]).map(t => t.driver_id === EK_ID
+      ? { ...t, drivers: { ...(t.drivers as object), ...EK_SET } } : t);
+    const args = { month_year: ym, dateFrom: `${ym}-01`, dateTo: lastDayOf(ym), todayDate: '2026-10-05', fixedExpenses: d.fixed, expenses: d.expenses };
+    const now = buildMonthlyReport({ ...args, trips: d.trips }).totals;
+    const set = buildMonthlyReport({ ...args, trips: withEk as never }).totals;
+    const ekDrv = sim.drivers.find(x => x.id === EK_ID)!;
+    const b = monthBounds(ym);
+    const ekTrips = sim.trips.filter(t => t.driver_id === EK_ID && String(t.date) >= b.from && String(t.date) <= b.to);
+    const pNow = calcPayroll({ driver: ekDrv as never, month_year: ym, trips: ekTrips as never });
+    const pSet = calcPayroll({ driver: { ...ekDrv, ...EK_SET } as never, month_year: ym, trips: ekTrips as never });
+    const stored = sim.payrolls.find(p => p.driver_id === EK_ID && p.month_year === ym);
+    console.log(`ek-sim ${ym}: เที่ยว ${ekTrips.length} | ฐาน ${pNow.base_salary}→${pSet.base_salary} ปกส ${pNow.social_security}→${pSet.social_security} สุทธิเอก ${pNow.net_pay}→${pSet.net_pay}`
+      + `${stored ? ` (ใบที่บันทึก [${stored.status}] ฐาน ${stored.base_salary} สุทธิ ${stored.net_pay})` : ' (ไม่มีใบ)'}`
+      + ` | dashboard ${now.net_profit}→${set.net_profit} | รายงาน ${now.net_after_fixed}→${set.net_after_fixed}`);
   }
   console.log(`\nรวม: ${pass} ผ่าน, ${fail} ไม่ผ่าน`);
 }

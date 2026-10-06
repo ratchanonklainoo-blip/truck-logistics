@@ -15,7 +15,7 @@ export async function computePayroll(
   keep: { other_additions?: number | string | null; other_deductions?: number | string | null },
 ): Promise<FreshPayroll> {
   const { data: driver, error: drErr } = await supabase
-    .from('drivers').select('id, base_salary, social_security, start_date, end_date, is_active, deleted_at')
+    .from('drivers').select('id, base_salary, social_security, start_date, end_date, base_salary_start, is_active, deleted_at')
     .eq('id', driver_id).maybeSingle();
   if (drErr) return { ok: false, status: 500, error: drErr.message };
   if (!driver) return { ok: false, status: 404, error: 'ไม่พบคนขับ' };

@@ -25,7 +25,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     .select(`
       driver_id, origin, destination, transport_price, trip_pay, fuel_cost, fuel_litres,
       distance, other_cost, withdraw, plate,
-      drivers!trips_driver_id_fkey(id, name, nickname, license_plate, base_salary, social_security, is_active, deleted_at, start_date, end_date)
+      drivers!trips_driver_id_fkey(id, name, nickname, license_plate, base_salary, social_security, is_active, deleted_at, start_date, end_date, base_salary_start)
     `)
     .gte('date', dateFrom)
     .lte('date', dateTo)

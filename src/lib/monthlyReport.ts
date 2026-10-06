@@ -17,7 +17,7 @@ export interface ReportDriver {
   id: string; name: string; nickname: string; license_plate: string | null;
   base_salary: number | null; social_security: number | null;
   is_active: boolean | null; deleted_at: string | null;
-  start_date?: string | null; end_date?: string | null;
+  start_date?: string | null; end_date?: string | null; base_salary_start?: string | null;
 }
 export interface ReportTrip {
   driver_id: string; origin: string | null; destination: string | null;
