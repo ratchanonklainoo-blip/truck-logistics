@@ -1,7 +1,8 @@
 // ทดสอบสูตรกลาง (payrollCalc + monthlyReport) ตามชุดทดสอบ 23 ข้อของ Fern (formula-audit-2026-10-05.md)
 // รัน:  node --import ./scripts/ts-hooks.mjs scripts/test-formula.mts            (เฉพาะ unit test ไม่แตะ DB)
-//       node --import ./scripts/ts-hooks.mjs scripts/test-formula.mts --live     (+ ดึงข้อมูลจริงแบบ SELECT เทียบกับสูตรเก่า + ตัวเลขที่คาดหวัง)
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+//       node --import ./scripts/ts-hooks.mjs scripts/test-formula.mts --live     (+ ดึงข้อมูลจริงแบบ SELECT เทียบกับสูตรเก่า + ตัวเลขที่คาดหวัง — ดึงสดทุกครั้ง)
+//       เพิ่ม --cache เพื่อใช้แคชรอบก่อน (แจ้งเตือนชัดเจน) ; --refresh ยังรับไว้ (บังคับดึงสด)
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { isRealTrip, countRealTrips } from '../src/lib/tripCount.ts';
@@ -186,9 +187,16 @@ if (process.argv.includes('--live')) {
     '2026-09': { dashboard: 89911, report: -74855 },
     '2026-10': { dashboard: -5700, report: -170466 },
   };
+  // ค่าเริ่มต้น = ดึงข้อมูลสดทุกครั้ง (--refresh ไม่จำเป็นแล้ว ยังรับไว้ให้คำสั่งเดิมใช้ได้)
+  // ใช้แคชเฉพาะเมื่อสั่ง --cache ชัดเจน และแจ้งเตือนว่าผลอาจไม่ตรงข้อมูลปัจจุบัน
   const cacheFile = path.join(tmpdir(), 'truck-formula-live-cache.json');
-  const cache: Record<string, ReturnType<typeof loadMonth>> = process.argv.includes('--refresh') || !existsSync(cacheFile)
-    ? {} : JSON.parse(readFileSync(cacheFile, 'utf8'));
+  const useCache = process.argv.includes('--cache') && !process.argv.includes('--refresh') && existsSync(cacheFile);
+  if (useCache) {
+    console.log(`\n⚠⚠ กำลังใช้แคชเก่า (${cacheFile} บันทึกเมื่อ ${statSync(cacheFile).mtime.toISOString()}) — ผล live อาจไม่ตรงข้อมูลปัจจุบัน ตัด --cache ออกเพื่อดึงสด ⚠⚠\n`);
+  } else {
+    console.log('\nlive: ดึงข้อมูลสดจาก DB (ไม่ใช้แคช)');
+  }
+  const cache: Record<string, ReturnType<typeof loadMonth>> = useCache ? JSON.parse(readFileSync(cacheFile, 'utf8')) : {};
   for (const ym of months) {
     const d = cache[ym] ??= loadMonth(ym);
     const rep = buildMonthlyReport({ month_year: ym, dateFrom: `${ym}-01`, dateTo: lastDayOf(ym), todayDate: '2026-10-05',
@@ -207,6 +215,11 @@ if (process.argv.includes('--live')) {
     console.log(`${same ? 'PASS' : 'FAIL'}  live ${ym}: กำไร dashboard เก่า ${old.net_profit} ใหม่ ${t.net_profit} | รายงาน เก่า ${old.net_after_fixed} ใหม่ ${t.net_after_fixed} | ฐานที่ตัดออก ${baseRemoved} | เที่ยว ${old.trips}/${t.trip_count}`);
     eq(`live ${ym}: ตัวเลขที่คาดหวัง (dashboard/รายงาน)`, { dashboard: t.net_profit, report: t.net_after_fixed }, EXPECT[ym]);
     eq(`live ${ym}: ฐานที่ตัดออกจากสูตรเก่า (เฉพาะเอก พ.ค.–ส.ค.)`, baseRemoved, ym >= '2026-05' && ym <= '2026-08' ? 5000 : 0);
+    // สูตรเก่าที่รู้จักช่องใหม่ (start_date/end_date/base_salary_start เขียนแยกใน formula-old) ต้องเท่าสูตรใหม่ทุกบาท ไม่มีส่วนต่างที่ยอมให้
+    const oldEmp = oldMonthlyReport({ drivers: d.drivers, trips: d.trips, expenses: d.expenses, fixed_expenses: d.fixed }, ym, { employment: true });
+    eq(`live ${ym}: สูตรเก่า+ช่องใหม่ = สูตรใหม่ (dashboard/รายงาน/เที่ยว/รายรับ/ค่าคนขับ)`,
+      { dashboard: oldEmp.net_profit, report: oldEmp.net_after_fixed, trips: oldEmp.trips, rev: Math.round(oldEmp.rev * 100) / 100, driver_cost: Math.round(oldEmp.driver_cost * 100) / 100 },
+      { dashboard: t.net_profit, report: t.net_after_fixed, trips: t.trip_count, rev: Math.round(t.total_revenue * 100) / 100, driver_cost: Math.round(t.total_driver_cost * 100) / 100 });
   }
   writeFileSync(cacheFile, JSON.stringify(cache));
 

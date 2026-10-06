@@ -6,7 +6,20 @@ import { fixedExpenseStatusForMonth } from '../src/lib/fixedExpenses.ts';
 const normalizePlate = (p: string | null | undefined) => !p ? '' : p
   .replace(/[฀-๿]+/g, '').replace(/[/\s]+/g, '-').replace(/-{2,}/g, '-').replace(/^-|-$/g, '').trim();
 
-export function oldMonthlyReport(snap: any, month_year: string) {
+/** opts.employment: ใช้กติกาฐานตามช่องใหม่ (start_date / end_date / base_salary_start migration 023) แทนฐานเต็ม
+ *  เขียนแยกจาก lib/payrollCalc โดยตั้งใจ (ไม่ import baseForMonth) เพื่อเป็นการตรวจไขว้ ไม่ใช่เทียบสูตรกับตัวเอง
+ *  - มี base_salary_start: เดือนก่อนเดือนนั้น → ฐาน 0
+ *  - ไม่มี: เริ่มงานกลางเดือน (start_date > วันที่ 1 ของเดือนนั้น) → ฐาน 0
+ *  - เริ่มงานหลังสิ้นเดือน / วันสุดท้ายก่อนวันที่ 1 → ฐาน 0 */
+function oldBaseWithEmployment(dr: any, from: string, to: string): number {
+  if (dr.start_date && dr.start_date > to) return 0;
+  if (dr.end_date && dr.end_date < from) return 0;
+  if (dr.base_salary_start) return from < String(dr.base_salary_start).slice(0, 7) + '-01' ? 0 : (Number(dr.base_salary) || 0);
+  if (dr.start_date && dr.start_date > from && dr.start_date <= to) return 0;
+  return Number(dr.base_salary) || 0;
+}
+
+export function oldMonthlyReport(snap: any, month_year: string, opts: { employment?: boolean } = {}) {
   const [y, m] = month_year.split('-');
   const from = `${y}-${m}-01`;
   const to = `${y}-${m}-${String(new Date(Number(y), Number(m), 0).getDate()).padStart(2, '0')}`;
@@ -19,7 +32,8 @@ export function oldMonthlyReport(snap: any, month_year: string) {
   for (const t of trips) {
     const dr = drById[t.driver_id];
     if (!dr || dr.deleted_at || dr.is_active === false) continue;
-    const s = map[t.driver_id] ??= { driver_id: t.driver_id, plate: dr.license_plate || '', base_salary: dr.base_salary || 0,
+    const s = map[t.driver_id] ??= { driver_id: t.driver_id, plate: dr.license_plate || '',
+      base_salary: opts.employment ? oldBaseWithEmployment(dr, from, to) : (dr.base_salary || 0),
       trip_count: 0, rev: 0, fuel: 0, other: 0, extra: 0, withdraw: 0, commission: 0 };
     s.trip_count += isRealTrip(t) ? 1 : 0; rowCounts[t.driver_id] = (rowCounts[t.driver_id] || 0) + 1;
     s.rev += Number(t.transport_price) || 0; s.fuel += Number(t.fuel_cost) || 0; s.other += Number(t.other_cost) || 0;
