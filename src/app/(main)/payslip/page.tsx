@@ -14,7 +14,7 @@ import {
   isDateInFilter, getCurrentMonthFilter, getThaiMonthLabel,
   floorToNearest10, adToBE,
 } from '@/lib/utils';
-import { nextMonthStart } from '@/lib/dateTh';
+import { nextMonthStart, todayBangkok } from '@/lib/dateTh';
 import { fetchAllRows } from '@/lib/fetchAll';
 import { calcPayroll, isCountedDriver } from '@/lib/payrollCalc';
 
@@ -117,6 +117,7 @@ function PayslipContent() {
   const selectedDriverId = selectedDriver?.id ?? null;
   const monthYm = `${monthFilter.year_be - BUDDHIST_ERA_OFFSET}-${String(monthFilter.month_index + 1).padStart(2, '0')}`;
   const [tripsError, setTripsError] = useState('');
+  const [tripsKey, setTripsKey] = useState('');
   useEffect(() => {
     if (!selectedDriverId) return;
     let cancelled = false;
@@ -129,7 +130,7 @@ function PayslipContent() {
         .range(a, b));
       if (cancelled) return;
       setTripsError(error ? `โหลดเที่ยววิ่งไม่สำเร็จ (${error.message}) — ลองรีเฟรชหน้า` : '');
-      if (!error) setAllTrips(data);
+      if (!error) { setAllTrips(data); setTripsKey(`${selectedDriverId}|${monthYm}`); }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -152,13 +153,16 @@ function PayslipContent() {
   // รายได้อื่น/หักอื่น จากใบเงินเดือนของเดือนนี้ (ถ้ามี) ให้ยอดสลิปตรงกับใบ
   const [payrollExtra, setPayrollExtra] = useState({ other_additions: 0, other_deductions: 0 });
   const [payrollExtraError, setPayrollExtraError] = useState('');
+  // ยอดสุทธิที่บันทึกในใบเงินเดือน (ใช้เทียบในเดือนที่ล็อกเท่านั้น ไม่เปลี่ยนตัวเลขสลิป) — key กันเทียบข้ามคนขับ/เดือนระหว่างโหลด
+  const [storedPayroll, setStoredPayroll] = useState<{ key: string; net_pay: number; status: string } | null>(null);
   useEffect(() => {
     if (!selectedDriverId) return;
     let cancelled = false;
     setPayrollExtra({ other_additions: 0, other_deductions: 0 });
+    setStoredPayroll(null);
     (async () => {
       const { data, error } = await supabase.from('payrolls')
-        .select('other_additions, other_deductions')
+        .select('other_additions, other_deductions, net_pay, status')
         .eq('driver_id', selectedDriverId).eq('month_year', monthYm).is('deleted_at', null)
         .maybeSingle();
       if (cancelled) return;
@@ -167,6 +171,7 @@ function PayslipContent() {
         other_additions:  Number(data?.other_additions)  || 0,
         other_deductions: Number(data?.other_deductions) || 0,
       });
+      setStoredPayroll(data ? { key: `${selectedDriverId}|${monthYm}`, net_pay: Number(data.net_pay) || 0, status: data.status } : null);
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -183,6 +188,13 @@ function PayslipContent() {
   const grossIncome   = pay?.gross_pay ?? 0;
   const netPay        = pay?.net_pay ?? 0;
   const monthLabel    = getThaiMonthLabel(monthFilter);
+
+  // เดือนที่ล็อก (ก่อนเดือนปัจจุบัน เวลาไทย): ยอดสุทธิสลิป (ตามสูตร) ≠ ยอดที่บันทึกในใบเงินเดือน → ป้ายเตือน (ตัวเลขสลิปไม่เปลี่ยน)
+  const curKey = `${selectedDriverId}|${monthYm}`;
+  const lockedNetMismatch = monthYm < todayBangkok().slice(0, 7) && !!pay
+    && tripsKey === curKey && storedPayroll?.key === curKey
+    && Math.abs(storedPayroll.net_pay - netPay) > 0.004
+    ? storedPayroll : null;
 
   const emptyRowCount = Math.max(0, PDF_CONFIG.TABLE_MIN_ROWS - billableTrips.length);
   const yearOptions   = Array.from({ length: 5 }, (_, i) => {
@@ -368,6 +380,14 @@ function PayslipContent() {
                 vertical-align: middle !important;
               }
             `}</style>
+
+            {/* เดือนที่ล็อก: ยอดสุทธิสลิป ≠ ใบเงินเดือนที่บันทึก — อยู่ในสลิป (ติดไปกับ PDF/PNG) เพื่อไม่ให้ส่งสลิปยอดไม่ตรงโดยไม่รู้ตัว */}
+            {lockedNetMismatch && (
+              <div style={{ border: '2px solid #B91C1C', backgroundColor: '#FEF2F2', color: '#B91C1C', borderRadius: '6px', padding: '8px 12px', marginBottom: '10px', fontSize: '13px', fontWeight: 700 }}>
+                ⚠ ยอดสุทธิในสลิปนี้ ({formatNumber(netPay, 2)} บาท ตามสูตรปัจจุบัน) ไม่ตรงกับใบเงินเดือนที่บันทึกไว้ ({formatNumber(lockedNetMismatch.net_pay, 2)} บาท{lockedNetMismatch.status === 'paid' ? ' · จ่ายแล้ว' : lockedNetMismatch.status === 'approved' ? ' · อนุมัติแล้ว' : ' · ร่าง'})
+                <div style={{ fontWeight: 400, fontSize: '12px' }}>เดือนที่ล็อก — ตรวจสอบที่หน้าเงินเดือนก่อนใช้สลิปนี้</div>
+              </div>
+            )}
 
             {/* ── Header ── */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px', borderBottom: '2px solid #1E3A5F', paddingBottom: '10px' }}>
