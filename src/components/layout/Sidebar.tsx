@@ -9,7 +9,7 @@ import {
   Truck, LayoutDashboard, ClipboardList,
   Users, Fuel, MapPin, UserCheck,
   Bell, Settings, LogOut, Navigation,
-  Wallet, ChevronRight, Ship, FileText, BarChart3, Printer, Menu, X,
+  Wallet, ChevronRight, Ship, FileText, BarChart3, Printer, Menu, X, TrendingUp,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
@@ -34,13 +34,14 @@ const NAV_ITEMS = [
   { href: '/import',     label: 'ชิปปิ้ง',            icon: Ship,            badge: null },
   { href: '/documents',  label: 'เอกสาร',              icon: FileText,        badge: null },
   { href: '/reports',    label: 'รายงานรายเดือน',     icon: BarChart3,        badge: null },
+  { href: '/reports/trip-profit', label: 'กำไรรายเที่ยว', icon: TrendingUp,     badge: null },
   { href: '/alerts',     label: 'แจ้งเตือน',           icon: Bell,            badge: 'alerts'   as keyof Badges },
   { href: '/settings',   label: 'ตั้งค่าระบบ',         icon: Settings,        badge: null },
 ] as const;
 
 const PHASE_AVAILABLE = new Set([
   '/dashboard', '/trips', '/jobs', '/jobs-nearby', '/customers', '/drivers', '/settings',
-  '/fuel', '/advances', '/payroll', '/payslip', '/alerts', '/import', '/documents', '/reports',
+  '/fuel', '/advances', '/payroll', '/payslip', '/alerts', '/import', '/documents', '/reports', '/reports/trip-profit',
 ]);
 
 interface SidebarProps { userEmail?: string; }
@@ -134,7 +135,9 @@ export default function Sidebar({ userEmail }: SidebarProps) {
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-0.5">
         {NAV_ITEMS.filter(i => !isHiddenRoute(i.href)).map(({ href, label, icon: Icon, badge }) => {
-          const isActive   = pathname === href || pathname.startsWith(href + '/');
+          // เมนูย่อย (เช่น /reports/trip-profit) ไม่ให้เมนูแม่ /reports ติดสถานะ active ไปด้วย
+          const isActive   = (pathname === href || pathname.startsWith(href + '/'))
+            && !NAV_ITEMS.some(o => o.href.length > href.length && o.href.startsWith(href + '/') && (pathname === o.href || pathname.startsWith(o.href + '/')));
           const available  = PHASE_AVAILABLE.has(href);
           const badgeCount = badge ? badges[badge] : 0;
 
