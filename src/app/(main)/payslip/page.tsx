@@ -10,13 +10,13 @@ import {
 } from '@/lib/constants';
 import {
   formatThaiDate, formatNumber, formatCurrency,
-  calculateTotals, calcNetPay,
+  calculateTotals,
   isDateInFilter, getCurrentMonthFilter, getThaiMonthLabel,
   floorToNearest10, adToBE,
 } from '@/lib/utils';
 import { nextMonthStart } from '@/lib/dateTh';
 import { fetchAllRows } from '@/lib/fetchAll';
-import { baseForMonth, isCountedDriver } from '@/lib/payrollCalc';
+import { calcPayroll, isCountedDriver } from '@/lib/payrollCalc';
 
 // ── PDF fix: company name is ALWAYS pulled from COMPANY.name constant
 // ── Font sizes: 22px for header, 13px minimum for content
@@ -149,12 +149,39 @@ function PayslipContent() {
 
   const totals = useMemo(() => calculateTotals(driverTrips), [driverTrips]);
 
-  // ฐาน/ประกันสังคมตามเดือน (สูตรเดียวกับใบเงินเดือน): เริ่มกลางเดือน = 0
-  const monthBase     = selectedDriver ? baseForMonth(selectedDriver, monthYm) : { base_salary: 0, social_security: 0 };
-  const salary        = monthBase.base_salary;
-  const socialSec     = monthBase.social_security;
-  const grossIncome   = totals.trip_pay + salary;
-  const netPay        = calcNetPay(totals.trip_pay, salary, totals.withdraw, socialSec);
+  // รายได้อื่น/หักอื่น จากใบเงินเดือนของเดือนนี้ (ถ้ามี) ให้ยอดสลิปตรงกับใบ
+  const [payrollExtra, setPayrollExtra] = useState({ other_additions: 0, other_deductions: 0 });
+  const [payrollExtraError, setPayrollExtraError] = useState('');
+  useEffect(() => {
+    if (!selectedDriverId) return;
+    let cancelled = false;
+    setPayrollExtra({ other_additions: 0, other_deductions: 0 });
+    (async () => {
+      const { data, error } = await supabase.from('payrolls')
+        .select('other_additions, other_deductions')
+        .eq('driver_id', selectedDriverId).eq('month_year', monthYm).is('deleted_at', null)
+        .maybeSingle();
+      if (cancelled) return;
+      setPayrollExtraError(error ? `โหลดรายได้/หักอื่นจากใบเงินเดือนไม่สำเร็จ (${error.message}) — ยอดสลิปอาจไม่รวมรายการเหล่านี้` : '');
+      setPayrollExtra({
+        other_additions:  Number(data?.other_additions)  || 0,
+        other_deductions: Number(data?.other_deductions) || 0,
+      });
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDriverId, monthYm]);
+
+  // สูตรกลางเดียวกับใบเงินเดือน (lib/payrollCalc): ฐานตามเดือน + ค่าเที่ยว + รายได้อื่น − เบิก − ประกันสังคม − หักอื่น
+  const pay = useMemo(() => selectedDriver
+    ? calcPayroll({ driver: selectedDriver, month_year: monthYm, trips: driverTrips, ...payrollExtra })
+    : null, [selectedDriver, monthYm, driverTrips, payrollExtra]);
+  const salary        = pay?.base_salary ?? 0;
+  const socialSec     = pay?.social_security ?? 0;
+  const otherAdd      = pay?.other_additions ?? 0;
+  const otherDed      = pay?.other_deductions ?? 0;
+  const grossIncome   = pay?.gross_pay ?? 0;
+  const netPay        = pay?.net_pay ?? 0;
   const monthLabel    = getThaiMonthLabel(monthFilter);
 
   const emptyRowCount = Math.max(0, PDF_CONFIG.TABLE_MIN_ROWS - billableTrips.length);
@@ -235,6 +262,9 @@ function PayslipContent() {
     <div className="p-6 space-y-6">
       {tripsError && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg no-print">{tripsError}</div>
+      )}
+      {payrollExtraError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg no-print">{payrollExtraError}</div>
       )}
       {/* Header Controls */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-wrap gap-4 items-center justify-between no-print">
@@ -445,6 +475,11 @@ function PayslipContent() {
                   <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'5px', color:'#059669' }}>
                     <span>+ เงินเดือน:</span><span>{formatNumber(salary)} บาท</span>
                   </div>
+                  {otherAdd > 0 && (
+                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'5px', color:'#059669' }}>
+                      <span>+ รายได้อื่น:</span><span>{formatNumber(otherAdd)} บาท</span>
+                    </div>
+                  )}
                   <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'5px', fontWeight:700, borderTop:'1px solid #CBD5E1', paddingTop:'5px' }}>
                     <span>รวมรายรับทั้งหมด:</span><span>{formatNumber(grossIncome)} บาท</span>
                   </div>
@@ -454,6 +489,11 @@ function PayslipContent() {
                   {socialSec > 0 && (
                     <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'5px', color:'#DC2626' }}>
                       <span>- หักประกันสังคม:</span><span>{formatNumber(socialSec)} บาท</span>
+                    </div>
+                  )}
+                  {otherDed > 0 && (
+                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'5px', color:'#DC2626' }}>
+                      <span>- หักอื่น:</span><span>{formatNumber(otherDed)} บาท</span>
                     </div>
                   )}
                   <div style={{ display:'flex', justifyContent:'space-between', borderTop:'2px solid #1E3A5F', paddingTop:'6px', marginTop:'4px', fontSize:'15px', fontWeight:800 }}>

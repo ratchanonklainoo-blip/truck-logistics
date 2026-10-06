@@ -171,6 +171,26 @@ if (process.argv.includes('--live')) {
     const oldNet = Math.round(((Number(d.base_salary) || 0) + oldComm - oldAdv - (Number(d.social_security) || 0)) * 100) / 100;
     console.log(`sim ${ym} ${String(d.nickname)} [${p.status}] แสดง=${shown ? 'ใช่' : 'ไม่'} auto-sync=${sync ? 'ใช่' : 'ไม่'} | สุทธิ เก็บไว้ ${p.net_pay} สูตรเก่า ${oldNet} สูตรใหม่ ${fresh.net_pay}${Math.abs(oldNet - fresh.net_pay) < 0.005 ? ' (เก่า=ใหม่)' : ' (ต่างจากสูตรเก่า)'} | ${diff || 'ไม่เปลี่ยน'}`);
   }
+  // สลิป: สูตรเดิม (fd07481: calcNetPay(ค่าเที่ยว, ฐานตามเดือน, เบิก, ประกันสังคม)) เทียบสูตรใหม่ (calcPayroll + รายได้/หักอื่นจากใบเงินเดือน)
+  // เดือนที่ใบไม่มีรายได้/หักอื่น ต้องเท่าเดิมทุกบาท
+  const { calcNetPay } = await import('../src/lib/utils.ts');
+  const { baseForMonth } = await import('../src/lib/payrollCalc.ts');
+  for (const ym of months) {
+    const b = monthBounds(ym);
+    for (const d of sim.drivers.filter(x => isCountedDriver(x as never))) {
+      const trips = sim.trips.filter(t => t.driver_id === d.id && String(t.date) >= b.from && String(t.date) <= b.to);
+      const totals = calculateTotals(trips as never);
+      const base = baseForMonth(d as never, ym);
+      const before = calcNetPay(totals.trip_pay, base.base_salary, totals.withdraw, base.social_security);
+      const pr = sim.payrolls.find(p => p.driver_id === d.id && p.month_year === ym);
+      const extra = { other_additions: Number(pr?.other_additions) || 0, other_deductions: Number(pr?.other_deductions) || 0 };
+      const after = calcPayroll({ driver: d as never, month_year: ym, trips: trips as never, ...extra }).net_pay;
+      const expected = Math.round((before + extra.other_additions - extra.other_deductions) * 100) / 100;
+      const ok = Math.abs(after - expected) < 0.005;
+      if (ok) pass++; else fail++;
+      console.log(`${ok ? 'PASS' : 'FAIL'}  สลิป ${ym} ${String(d.nickname)}: ก่อน ${before} หลัง ${after} (รายได้อื่น ${extra.other_additions} หักอื่น ${extra.other_deductions})${extra.other_additions || extra.other_deductions ? '' : ' — ต้องเท่าเดิม'}`);
+    }
+  }
   console.log(`\nรวม: ${pass} ผ่าน, ${fail} ไม่ผ่าน`);
 }
 process.exitCode = fail ? 1 : 0;
