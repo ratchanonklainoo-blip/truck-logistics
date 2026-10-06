@@ -9,7 +9,8 @@ import {
   AlertCircle, Info,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
-import { isEmployedInMonth, isCountedDriver } from '@/lib/payrollCalc';
+import { isEmployedInMonth, isCountedDriver, type PayrollNumbers } from '@/lib/payrollCalc';
+import { todayBangkok } from '@/lib/dateTh';
 
 interface Driver {
   id: string;
@@ -61,14 +62,22 @@ interface Payroll {
   driver?: Driver | null;
   trips?: TripRow[];
   advances?: AdvanceRow[];
+  /** เดือนที่ล็อก: ยอดตามสูตรปัจจุบัน (อ่านอย่างเดียว ไม่ได้บันทึก) */
+  preview?: PayrollNumbers | null;
+  preview_error?: string | null;
 }
 
 const THAI_MONTHS = ['', 'มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
   'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
 
+// เดือนปัจจุบันตามเวลาไทย (UTC+7)
 function getCurrentMonthYear(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  return todayBangkok().slice(0, 7);
+}
+
+/** เดือนก่อนเดือนปัจจุบัน (เวลาไทย) = เดือนที่ล็อก: เปิดหน้าแล้วไม่คำนวณใหม่/ไม่เขียนทับใบร่างอัตโนมัติ */
+function isLockedMonth(my: string): boolean {
+  return my < getCurrentMonthYear();
 }
 
 function formatMonthYear(my: string): string {
@@ -115,7 +124,25 @@ export default function PayrollPage() {
     // แสดงใบของคนขับที่ไม่ถูกลบ (รวมคนที่ปิดใช้งาน) — ใบของคนขับที่ถูกลบแบบเดิมยังอยู่ใน DB แต่ไม่โชว์
     const enriched = (pay || []).filter(p => drMap[p.driver_id]).map(p => ({ ...p, driver: drMap[p.driver_id] }));
 
-    // Auto-sync ใบร่าง: คำนวณใหม่ทุกครั้งที่เปิดหน้า (คงรายได้/หักอื่น) — ข้ามคนขับที่ไม่ได้ทำงานเดือนนี้ (API จะตอบ 409)
+    // เดือนที่ล็อก (ก่อนเดือนปัจจุบัน เวลาไทย): ไม่ auto-sync — แสดงยอดที่บันทึกไว้ + ยอดตามสูตรปัจจุบันแบบอ่านอย่างเดียว
+    if (isLockedMonth(selectedMonth)) {
+      let previews: Record<string, { preview: PayrollNumbers | null; preview_error: string | null }> = {};
+      try {
+        const res = await fetch(`/api/payroll?month_year=${selectedMonth}&preview=1`);
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'โหลดยอดตามสูตรปัจจุบันไม่สำเร็จ');
+        previews = Object.fromEntries((json.data || []).map((x: Payroll) =>
+          [x.id, { preview: x.preview ?? null, preview_error: x.preview_error ?? null }]));
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'โหลดยอดตามสูตรปัจจุบันไม่สำเร็จ';
+        previews = Object.fromEntries(enriched.map(p => [p.id, { preview: null, preview_error: msg }]));
+      }
+      setPayrolls(enriched.map(p => ({ ...p, ...previews[p.id] })) as Payroll[]);
+      setLoading(false);
+      return;
+    }
+
+    // Auto-sync ใบร่าง (เฉพาะเดือนปัจจุบันขึ้นไป): คำนวณใหม่ทุกครั้งที่เปิดหน้า (คงรายได้/หักอื่น) — ข้ามคนขับที่ไม่ได้ทำงานเดือนนี้
     const drafts = enriched.filter(p => p.status === 'draft' && isEmployedInMonth(p.driver, selectedMonth));
     if (drafts.length > 0) {
       await Promise.all(drafts.map(p =>
@@ -180,11 +207,14 @@ export default function PayrollPage() {
   };
 
   const generateAll = async () => {
-    if (!confirm(`คำนวณเงินเดือนเดือน ${formatMonthYear(selectedMonth)} สำหรับคนขับทั้งหมด?`)) return;
+    const locked = isLockedMonth(selectedMonth);
+    if (!confirm(locked
+      ? `${formatMonthYear(selectedMonth)} เป็นเดือนที่ล็อก\nจะสร้างใบเงินเดือนเฉพาะคนขับที่ยังไม่มีใบ — ใบที่มีอยู่แล้ว (รวมใบร่าง) จะไม่ถูกคำนวณทับ\n(คำนวณใบร่างใหม่ทีละใบได้ที่ปุ่ม "คำนวณใหม่")`
+      : `คำนวณเงินเดือนเดือน ${formatMonthYear(selectedMonth)} สำหรับคนขับทั้งหมด?`)) return;
     setGenerating(true);
     try {
-      // ข้ามใบที่อนุมัติ/จ่ายแล้ว — API จะตอบ 409 อยู่แล้ว แต่ไม่ต้องยิงให้เสียเที่ยว
-      const lockedIds = new Set(payrolls.filter(p => p.status !== 'draft').map(p => p.driver_id));
+      // ข้ามใบที่อนุมัติ/จ่ายแล้ว — API จะตอบ 409 อยู่แล้ว แต่ไม่ต้องยิงให้เสียเที่ยว; เดือนที่ล็อกข้ามทุกใบที่มีอยู่แล้ว
+      const lockedIds = new Set(payrolls.filter(p => locked || p.status !== 'draft').map(p => p.driver_id));
       for (const driver of drivers) {
         if (lockedIds.has(driver.id)) continue;
         await fetch('/api/payroll', {
@@ -198,6 +228,23 @@ export default function PayrollPage() {
   };
 
   const recalcOne = async (p: Payroll) => {
+    // เดือนที่ล็อก: ต้องยืนยันพร้อมดูยอดก่อน/หลังก่อนเขียนทับใบร่าง
+    if (isLockedMonth(p.month_year)) {
+      if (!p.preview) {
+        alert(`คำนวณยอดใหม่ไม่ได้: ${p.preview_error || 'ยังโหลดยอดตามสูตรปัจจุบันไม่สำเร็จ'} — กดรีเฟรชแล้วลองใหม่`);
+        return;
+      }
+      const f = (n: number) => formatCurrency(Number(n) || 0);
+      const lines = [
+        `เงินเดือนพื้นฐาน: ${f(p.base_salary)} → ${f(p.preview.base_salary)}`,
+        `ค่ารอบ: ${f(p.total_commission)} → ${f(p.preview.total_commission)}`,
+        `เบิก: ${f(p.total_advance)} → ${f(p.preview.total_advance)}`,
+        `ประกันสังคม: ${f(p.social_security)} → ${f(p.preview.social_security)}`,
+        `จำนวนเที่ยว: ${p.trip_count} → ${p.preview.trip_count}`,
+        `สุทธิ: ${f(p.net_pay)} → ${f(p.preview.net_pay)}`,
+      ];
+      if (!confirm(`${formatMonthYear(p.month_year)} เป็นเดือนที่ล็อก\nคำนวณใหม่และบันทึกทับใบร่างของ ${p.driver?.nickname || ''}?\n\n${lines.join('\n')}`)) return;
+    }
     setActionLoading(p.id + '-recalc');
     const res = await fetch('/api/payroll', {
       method: 'POST',
@@ -294,7 +341,15 @@ export default function PayrollPage() {
       </div>
 
       {/* Month Title */}
-      <div className="text-lg font-semibold text-slate-600">{formatMonthYear(selectedMonth)}</div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="text-lg font-semibold text-slate-600">{formatMonthYear(selectedMonth)}</div>
+        {isLockedMonth(selectedMonth) && (
+          <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-amber-100 text-amber-800"
+            title="เปิดหน้าแล้วไม่คำนวณใบร่างใหม่อัตโนมัติ — แสดงยอดที่บันทึกไว้ และยอดตามสูตรปัจจุบันเพื่อเทียบเท่านั้น">
+            เดือนที่ล็อก · แสดงยอดที่บันทึกไว้ ไม่คำนวณใหม่อัตโนมัติ
+          </span>
+        )}
+      </div>
 
       {/* Summary Cards */}
       {payrolls.length > 0 && (
@@ -373,7 +428,13 @@ export default function PayrollPage() {
                     </span>
                     <div className="text-right">
                       <div className="text-sm font-bold text-emerald-700">{formatCurrency(p.net_pay)}</div>
-                      <div className="text-xs text-slate-400">สุทธิ</div>
+                      <div className="text-xs text-slate-400">สุทธิ{isLockedMonth(p.month_year) ? ' (ที่บันทึกไว้)' : ''}</div>
+                      {isLockedMonth(p.month_year) && p.preview && Math.abs(p.preview.net_pay - p.net_pay) > 0.004 && (
+                        <div className="text-xs text-amber-700">ตามสูตรปัจจุบัน {formatCurrency(p.preview.net_pay)}</div>
+                      )}
+                      {isLockedMonth(p.month_year) && p.preview_error && (
+                        <div className="text-xs text-red-600">เทียบสูตรไม่ได้</div>
+                      )}
                     </div>
                     {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
                   </div>
@@ -501,6 +562,52 @@ export default function PayrollPage() {
                             </div>
                           </div>
                         </div>
+
+                        {/* เดือนที่ล็อก: เทียบยอดที่บันทึกไว้กับยอดตามสูตรปัจจุบัน (อ่านอย่างเดียว ไม่เขียน DB) */}
+                        {isLockedMonth(p.month_year) && (p.preview || p.preview_error) && (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs">
+                            <div className="font-semibold text-amber-800 mb-2">
+                              เดือนที่ล็อก — ยอดที่บันทึกไว้ เทียบกับยอดตามสูตรปัจจุบัน (ยังไม่ได้บันทึก)
+                            </div>
+                            {p.preview ? (
+                              <div className="overflow-x-auto">
+                                <table className="w-full">
+                                  <thead className="text-slate-500">
+                                    <tr><th className="text-left py-1">รายการ</th><th className="text-right py-1">ที่บันทึกไว้</th><th className="text-right py-1">ตามสูตรปัจจุบัน</th></tr>
+                                  </thead>
+                                  <tbody>
+                                    {([
+                                      ['เงินเดือนพื้นฐาน', p.base_salary, p.preview.base_salary],
+                                      ['ค่ารอบ', p.total_commission, p.preview.total_commission],
+                                      ['รายได้อื่น', p.other_additions, p.preview.other_additions],
+                                      ['เบิก', p.total_advance, p.preview.total_advance],
+                                      ['ประกันสังคม', p.social_security, p.preview.social_security],
+                                      ['หักอื่น', p.other_deductions, p.preview.other_deductions],
+                                      ['สุทธิ', p.net_pay, p.preview.net_pay],
+                                    ] as [string, number, number][]).map(([label, saved, fresh]) => {
+                                      const diff = Math.abs((Number(saved) || 0) - fresh) > 0.004;
+                                      return (
+                                        <tr key={label} className={diff ? 'text-amber-800 font-medium' : 'text-slate-600'}>
+                                          <td className="py-0.5">{label}</td>
+                                          <td className="py-0.5 text-right">{formatCurrency(Number(saved) || 0)}</td>
+                                          <td className="py-0.5 text-right">{formatCurrency(fresh)}{diff ? ' *' : ''}</td>
+                                        </tr>
+                                      );
+                                    })}
+                                    <tr className={p.trip_count !== p.preview.trip_count ? 'text-amber-800 font-medium' : 'text-slate-600'}>
+                                      <td className="py-0.5">จำนวนเที่ยว</td>
+                                      <td className="py-0.5 text-right">{p.trip_count}</td>
+                                      <td className="py-0.5 text-right">{p.preview.trip_count}{p.trip_count !== p.preview.trip_count ? ' *' : ''}</td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                                <p className="mt-2 text-slate-500">* ต่างจากที่บันทึกไว้ — ใบไม่เปลี่ยนจนกว่าจะกด &quot;คำนวณใหม่&quot; และยืนยัน</p>
+                              </div>
+                            ) : (
+                              <p className="text-red-600">{p.preview_error}</p>
+                            )}
+                          </div>
+                        )}
 
                         {/* Trip breakdown table */}
                         {p.trips && p.trips.length > 0 && (

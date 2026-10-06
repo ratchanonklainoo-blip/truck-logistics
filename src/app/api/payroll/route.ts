@@ -35,6 +35,17 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     driver: drMap[p.driver_id] || null,
   }));
 
+  // preview=1: คำนวณยอดตามสูตรปัจจุบันของแต่ละใบแบบอ่านอย่างเดียว (ไม่เขียน DB) — หน้าเงินเดือนใช้เทียบกับยอดที่บันทึกในเดือนที่ล็อก
+  if (searchParams.get('preview') === '1') {
+    const withPreview = await Promise.all(enriched.map(async p => {
+      const fresh = await computePayroll(supabase, p.driver_id, p.month_year, {
+        other_additions: p.other_additions, other_deductions: p.other_deductions,
+      });
+      return { ...p, preview: fresh.ok ? fresh.numbers : null, preview_error: fresh.ok ? null : fresh.error };
+    }));
+    return NextResponse.json({ data: withPreview });
+  }
+
   return NextResponse.json({ data: enriched });
 }
 
