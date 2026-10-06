@@ -7,6 +7,7 @@ import path from 'node:path';
 import { isRealTrip, countRealTrips } from '../src/lib/tripCount.ts';
 import {
   tripPayOf, calcPayroll, baseForMonth, isEmployedInMonth, monthBounds, payrollChangedFields, probationBaseStart,
+  payrollMoneyChangedFields, describeMoneyChanges,
 } from '../src/lib/payrollCalc.ts';
 import { buildMonthlyReport } from '../src/lib/monthlyReport.ts';
 import { calculateTotals } from '../src/lib/utils.ts';
@@ -42,6 +43,14 @@ eq('#3 " - " ทั้งคู่ไม่นับ', countRealTrips([{ origin:
   eq('#4 เบิกเพิ่มหลังคำนวณ → ตรวจพบเปลี่ยน (เบิก/สุทธิ)', payrollChangedFields(stored, fresh), ['total_advance', 'net_pay']);
   eq('#4 ยอดใหม่ เบิก = 1,000', fresh.total_advance, 1000);
   eq('#4 ไม่เปลี่ยน → ไม่มีฟิลด์ต่าง', payrollChangedFields(fresh, calcPayroll({ driver: DR, month_year: '2026-06', trips: [trip({ withdraw: 1000 })] })), []);
+  // เดือนที่ล็อก: เทียบเฉพาะฟิลด์เงิน — ต่างแค่จำนวนเที่ยว/ระยะทาง (เช่น ใบ จง พ.ค./มิ.ย.) ไม่บล็อกอนุมัติ
+  const tripsOnly = calcPayroll({ driver: DR, month_year: '2026-06', trips: [trip(), trip({ origin: '-', destination: '-', trip_pay: 0, distance: 50 })] });
+  const storedMoreTrips = { ...tripsOnly, trip_count: tripsOnly.trip_count + 1, total_distance: 0 };
+  eq('#4L ต่างแค่จำนวนเที่ยว/ระยะทาง → ฟิลด์เงินไม่ต่าง', [payrollChangedFields(storedMoreTrips, tripsOnly), payrollMoneyChangedFields(storedMoreTrips, tripsOnly)],
+    [['trip_count', 'total_distance'], []]);
+  eq('#4L เบิกต่าง → ฟิลด์เงินที่ต่าง = เบิก/สุทธิ (ไม่มีจำนวนเที่ยว)', payrollMoneyChangedFields({ ...stored, trip_count: 9 }, fresh), ['total_advance', 'net_pay']);
+  eq('#4L ข้อความเตือนแสดงเฉพาะฟิลด์เงินที่ต่าง', describeMoneyChanges({ ...stored, trip_count: 9 }, fresh),
+    `เบิก ${(0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} → ${(1000).toLocaleString('th-TH', { minimumFractionDigits: 2 })}, สุทธิ ${stored.net_pay.toLocaleString('th-TH', { minimumFractionDigits: 2 })} → ${fresh.net_pay.toLocaleString('th-TH', { minimumFractionDigits: 2 })}`);
 }
 // 5 คงรายได้/หักอื่น
 {

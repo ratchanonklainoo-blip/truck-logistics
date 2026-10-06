@@ -9,7 +9,7 @@ import {
   AlertCircle, Info,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
-import { isEmployedInMonth, isCountedDriver, payrollChangedFields, type PayrollNumbers } from '@/lib/payrollCalc';
+import { isEmployedInMonth, isCountedDriver, payrollMoneyChangedFields, describeMoneyChanges, type PayrollNumbers } from '@/lib/payrollCalc';
 import { todayBangkok } from '@/lib/dateTh';
 
 interface Driver {
@@ -287,13 +287,14 @@ export default function PayrollPage() {
     }
   };
 
-  // เดือนที่ล็อก: ยอดในใบต่างจากสูตรปัจจุบัน → ห้ามอนุมัติ ต้องกด "คำนวณใหม่" และยืนยันก่อน (server ตรวจซ้ำอีกชั้น)
+  // เดือนที่ล็อก: ยอดเงินในใบต่างจากสูตรปัจจุบัน → ห้ามอนุมัติ ต้องกด "คำนวณใหม่" และยืนยันก่อน (server ตรวจซ้ำอีกชั้น)
+  // เทียบเฉพาะฟิลด์เงิน — ต่างแค่จำนวนเที่ยว/ระยะทาง อนุมัติได้
   const lockedMismatch = (p: Payroll) =>
-    isLockedMonth(p.month_year) && !!p.preview && payrollChangedFields(p, p.preview).length > 0;
+    isLockedMonth(p.month_year) && !!p.preview && payrollMoneyChangedFields(p, p.preview).length > 0;
 
   const handleApprove = (p: Payroll) => {
     if (lockedMismatch(p)) {
-      alert(`${formatMonthYear(p.month_year)} เป็นเดือนที่ล็อก และยอดในใบต่างจากยอดตามสูตรปัจจุบัน (สุทธิ ${formatCurrency(p.net_pay)} → ${formatCurrency(p.preview!.net_pay)})\nอนุมัติไม่ได้ — กรุณากด "คำนวณใหม่" และยืนยันยอดก่อน/หลังก่อน แล้วจึงอนุมัติ`);
+      alert(`${formatMonthYear(p.month_year)} เป็นเดือนที่ล็อก และยอดเงินในใบต่างจากยอดตามสูตรปัจจุบัน\n${describeMoneyChanges(p, p.preview!).split(', ').join('\n')}\nอนุมัติไม่ได้ — กรุณากด "คำนวณใหม่" และยืนยันยอดก่อน/หลังก่อน แล้วจึงอนุมัติ`);
       return;
     }
     return runAction(p, 'approve', 'approve');
@@ -537,7 +538,7 @@ export default function PayrollPage() {
                                 </button>
                               )}
                               {p.status === 'draft' && lockedMismatch(p) && (
-                                <div className="text-xs text-amber-100">ยอดต่างจากสูตรปัจจุบัน — กด &quot;คำนวณใหม่&quot; และยืนยันก่อนอนุมัติ</div>
+                                <div className="text-xs text-amber-100">ยอดเงินต่างจากสูตรปัจจุบัน ({describeMoneyChanges(p, p.preview!)}) — กด &quot;คำนวณใหม่&quot; และยืนยันก่อนอนุมัติ</div>
                               )}
                               {p.status === 'approved' && (
                                 <button

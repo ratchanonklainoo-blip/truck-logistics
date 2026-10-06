@@ -144,3 +144,22 @@ const MONEY_FIELDS: (keyof PayrollNumbers)[] = [
 export function payrollChangedFields(stored: Partial<Record<keyof PayrollNumbers, unknown>>, fresh: PayrollNumbers): (keyof PayrollNumbers)[] {
   return MONEY_FIELDS.filter(k => Math.abs((Number(stored[k]) || 0) - fresh[k]) > 0.004);
 }
+
+/** ชื่อฟิลด์ที่เป็นเงินจริง (ไม่รวมจำนวนเที่ยว/ระยะทาง) — ใช้ตัดสินบล็อกอนุมัติในเดือนที่ล็อก */
+export const PAYROLL_MONEY_LABELS: Partial<Record<keyof PayrollNumbers, string>> = {
+  base_salary: 'เงินเดือนพื้นฐาน', total_commission: 'ค่ารอบ', other_additions: 'รายได้อื่น',
+  gross_pay: 'รวมรายได้', total_advance: 'เบิก', social_security: 'ประกันสังคม',
+  other_deductions: 'หักอื่น', net_pay: 'สุทธิ',
+};
+
+/** ฟิลด์เงินที่ต่าง (ไม่เทียบจำนวนเที่ยว/ระยะทาง) — เดือนที่ล็อก: ต่างแค่จำนวนเที่ยวยังอนุมัติได้ */
+export function payrollMoneyChangedFields(stored: Partial<Record<keyof PayrollNumbers, unknown>>, fresh: PayrollNumbers): (keyof PayrollNumbers)[] {
+  return payrollChangedFields(stored, fresh).filter(k => k in PAYROLL_MONEY_LABELS);
+}
+
+/** ข้อความรายการฟิลด์เงินที่ต่าง เช่น "เบิก 3,600 → 0, สุทธิ 10,000 → 13,600" */
+export function describeMoneyChanges(stored: Partial<Record<keyof PayrollNumbers, unknown>>, fresh: PayrollNumbers): string {
+  const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return payrollMoneyChangedFields(stored, fresh)
+    .map(k => `${PAYROLL_MONEY_LABELS[k]} ${fmt(Number(stored[k]) || 0)} → ${fmt(fresh[k])}`).join(', ');
+}
