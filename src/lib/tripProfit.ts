@@ -4,12 +4,15 @@
 // กติกา:
 //  - รถ = ทะเบียนของเที่ยว (trips.plate) ไม่มีใช้ทะเบียนคนขับ ; ทะเบียนคู่ทั้งก้อนเป็นรถคันเดียว
 //  - เที่ยวจริง = isRealTrip (กติกาเดียวกับการนับเที่ยวทั้งระบบ) ; แถวอื่น = วิ่งเปล่า (มีไมล์) / ไม่ได้วิ่ง (ซ่อม/เบิก)
-//  - ค่าน้ำมันของรถ/วัน = Σ trips.fuel_cost ทุกแถวของรถคันนั้นวันนั้น (+ ยอดยกมา) กระจายให้เที่ยวจริงตามระยะทาง
-//    · เที่ยวไมล์ 0 ที่เลขไมล์อยู่ในช่วงของเที่ยวที่มีไมล์ = รอบน้ำมันเดียวกัน → แบ่งน้ำมันส่วนของกลุ่มเท่ากัน
-//    · วันมีน้ำมันไม่มีเที่ยว → ยกไปรวมกับวันถัดไปที่มีเที่ยวของรถคันนั้น
-//    · วันมีเที่ยวไม่มีน้ำมัน → ประมาณการจากต้นทุนน้ำมัน/กม. ของรถคันนั้นย้อนหลัง 30 วัน (ป้าย "ประมาณการ")
+//  - ค่าน้ำมันของรถ/วัน = Σ trips.fuel_cost ทุกแถวของรถคันนั้นวันนั้น (ไม่ยกข้ามวัน) กระจายให้เที่ยวจริงตามระยะทาง
+//    · เที่ยวไมล์ 0 ที่เลขไมล์อยู่ในช่วงของเที่ยวที่มีไมล์ = รอบน้ำมันเดียวกัน → เที่ยวที่มีไมล์รับน้ำมันของกลุ่มทั้งก้อน เที่ยวไมล์ 0 ได้ 0
+//    · วันมีน้ำมันไม่มีเที่ยว → เป็นต้นทุนของวันนั้นเอง (ไม่ลงเที่ยวใด) ; ถ้าเป็นแถว '-' ที่ไมล์เริ่มตรงกับเที่ยวไมล์ 0
+//      ภายใน 3 วันก่อนหน้า ขึ้นป้ายเตือนอย่างเดียว ไม่ย้ายตัวเลข (CEO อนุมัติ 2026-10-07)
+//    · วันมีเที่ยวไม่มีน้ำมัน → ประมาณการจากต้นทุนน้ำมัน/กม. ของรถคันนั้นย้อนหลัง 30 วัน (ป้าย "ประมาณการ" เฉพาะรายเที่ยว)
 //  - ต้นทุนเที่ยว = น้ำมันจัดสรร + ค่าเที่ยว (trip_pay) ; ไม่รวม other_cost (แสดงเป็น "ค่าใช้จ่ายอื่นของเดือน")
 //  - กำไรเที่ยว = ค่าขนส่ง − ต้นทุนเที่ยว
+//  - สรุปรายวัน/รายคัน (ทุกแถวของวัน): ต้นทุนวัน = น้ำมันที่เติมวันนั้น + ค่าเที่ยว ; กำไรวัน = รายได้ − ต้นทุนวัน
+//    ต้นทุน/กม. = ต้นทุนวัน ÷ กม. ที่วิ่งจริงของวัน (รวมวิ่งเปล่า) ; ไม่ใช้น้ำมันประมาณการ
 import { isRealTrip } from './tripCount';
 import { normalizePlate } from './monthlyReport';
 import { tripPayOf, isCountedDriver, type EmploymentLike } from './payrollCalc';
@@ -48,16 +51,23 @@ export interface TPTrip {
   receipt_image_url: string | null;
 }
 
+export interface TPFuelHint {
+  row_id: string; amount: number;  // แถว '-' ที่มีน้ำมัน
+  trip_id: string; trip_date: string; route: string; // เที่ยวไมล์ 0 ที่ไมล์ตรงกัน
+}
+
 export interface TPDay {
   vehicle: string; plate_label: string; date: string; drivers: string[];
-  trip_count: number; km: number;
+  trip_count: number;
+  km: number;                      // กม. ที่วิ่งจริงของวัน (ทุกแถว รวมวิ่งเปล่า)
   fuel_own: number; litres_own: number;
-  carried_in: { from: string; amount: number }[];
-  carried_out: number;             // วันไม่มีเที่ยว: ยอดที่ยกไปเที่ยวถัดไป
-  fuel_pool: number;               // น้ำมันของวัน + ยกมา (ที่จัดสรรจริง)
-  fuel_estimated: number; est_rate: number | null;
-  pay: number; cost: number; revenue: number; profit: number;
+  fills: number;                   // จำนวนครั้งที่เติม (แถวที่มีค่าน้ำมัน)
+  fuel_no_trip: number;            // วันไม่มีเที่ยว: น้ำมันที่ไม่ได้ลงเที่ยวใด
+  fuel_estimated: number; est_rate: number | null; // น้ำมันประมาณการของเที่ยวในวันนี้ (เฉพาะรายเที่ยว ไม่นับในต้นทุนวัน)
+  pay: number; cost: number; revenue: number; profit: number; // ทุกแถวของวัน: cost = fuel_own + pay
+  cost_per_km: number | null;
   off_trip: { rows: number; km: number; other: number; pay: number; revenue: number };
+  hints: TPFuelHint[];
 }
 
 export interface TPOtherExpense {
@@ -72,14 +82,12 @@ export interface TPTotals {
   cost_per_km: number | null; profit_per_km: number | null;
   other_expenses: number; profit_after_other: number;
   off_trip_revenue: number; off_trip_pay: number;
-  carried_in_before: number;       // น้ำมันจากก่อนช่วงที่ถูกจัดสรรให้เที่ยวในช่วง
-  pending_out: number;             // น้ำมันในช่วงที่ยกไปเที่ยวหลังช่วง/ยังไม่ได้จัดสรร
+  fuel_no_trip: number;            // น้ำมันของวันที่ไม่มีเที่ยว (ไม่ได้ลงเที่ยวใด)
 }
 
 export interface TripProfitResult {
   from: string; to: string; margin: number;
   trips: TPTrip[]; days: TPDay[]; other_expenses: TPOtherExpense[]; totals: TPTotals;
-  pending: { vehicle: string; plate_label: string; from: string; amount: number }[];
 }
 
 const num = (v: unknown) => Number(v) || 0;
@@ -127,7 +135,7 @@ const addDays = (d: string, n: number) =>
   new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10) + n)).toISOString().slice(0, 10);
 
 export interface TripProfitOptions {
-  from: string; to: string;        // ช่วงที่แสดง (YYYY-MM-DD) — rows ควรมีข้อมูลย้อนก่อน from (แนะนำ 60 วัน) เพื่อประมาณการ/ยอดยกมา
+  from: string; to: string;        // ช่วงที่แสดง (YYYY-MM-DD) — rows ควรมีข้อมูลย้อนก่อน from (แนะนำ 60 วัน) เพื่อประมาณการ/ป้ายเตือน
   margin?: number;                 // กำไรขั้นต่ำ (0.10 = 10%)
   estDays?: number;                // ย้อนหลังกี่วันสำหรับอัตราประมาณการ (30)
   estMinKm?: number;               // ถ้าช่วงย้อนหลังมี กม. น้อยกว่านี้ ใช้ 10 วันที่มีข้อมูลล่าสุดแทน (1000)
@@ -148,16 +156,15 @@ export function buildTripProfit(rows: TPRow[], opts: TripProfitOptions): TripPro
     byVehicle.get(k)!.push(t);
   }
 
-  const trips: TPTrip[] = [], days: TPDay[] = [], pending: TripProfitResult['pending'] = [];
-  let carriedInBeforeS = 0, pendingOutS = 0;
+  const trips: TPTrip[] = [], days: TPDay[] = [];
 
   for (const [vehicle, vrows] of Array.from(byVehicle.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
     const plateLabel = (vrows[0].plate || '').trim() || vrows[0].drivers!.license_plate || vehicle;
     const byDay = new Map<string, TPRow[]>();
     for (const t of vrows) { if (!byDay.has(t.date)) byDay.set(t.date, []); byDay.get(t.date)!.push(t); }
 
-    let carry: { date: string; s: number; ml: number }[] = [];
     const hist: { date: string; fuelS: number; km: number }[] = [];
+    const zeroKmTrips = vrows.filter(t => classifyRow(t) === 'trip' && !hasKm(t) && num(t.odometer_start) > 0);
 
     for (const date of Array.from(byDay.keys()).sort()) {
       const r = byDay.get(date)!.sort((a, b) =>
@@ -167,33 +174,42 @@ export function buildTripProfit(rows: TPRow[], opts: TripProfitOptions): TripPro
       const ownS = r.reduce((a, t) => a + toS(num(t.fuel_cost)), 0);
       const ownMl = r.reduce((a, t) => a + Math.round(num(t.fuel_litres) * 1000), 0);
       const allKm = r.reduce((a, t) => a + kmOf(t), 0);
+      const payS = r.reduce((a, t) => a + toS(tripPayOf(t)), 0);
+      const revS = r.reduce((a, t) => a + toS(num(t.transport_price)), 0);
       const day: TPDay = {
         vehicle, plate_label: plateLabel, date,
         drivers: Array.from(new Set(r.map(t => t.drivers!.nickname || t.drivers!.name))),
-        trip_count: T.length, km: 0,
+        trip_count: T.length, km: allKm,
         fuel_own: fromS(ownS), litres_own: ownMl / 1000,
-        carried_in: carry.map(c => ({ from: c.date, amount: fromS(c.s) })), carried_out: 0,
-        fuel_pool: 0, fuel_estimated: 0, est_rate: null,
-        pay: 0, cost: 0, revenue: 0, profit: 0,
+        fills: r.filter(t => num(t.fuel_cost) !== 0).length,
+        fuel_no_trip: T.length === 0 ? fromS(ownS) : 0,
+        fuel_estimated: 0, est_rate: null,
+        pay: fromS(payS), cost: fromS(ownS + payS), revenue: fromS(revS), profit: fromS(revS - ownS - payS),
+        cost_per_km: allKm > 0 ? r2(fromS(ownS + payS) / allKm) : null,
         off_trip: {
           rows: O.length, km: O.reduce((a, t) => a + kmOf(t), 0),
           other: r2(O.reduce((a, t) => a + num(t.other_cost), 0)),
           pay: r2(O.reduce((a, t) => a + tripPayOf(t), 0)),
           revenue: r2(O.reduce((a, t) => a + num(t.transport_price), 0)),
         },
+        // ป้ายเตือน: แถว '-' มีน้ำมัน + ไมล์เริ่มตรงกับเที่ยวไมล์ 0 ภายใน 3 วันก่อนหน้า (ไม่ย้ายตัวเลข)
+        hints: O.filter(t => num(t.fuel_cost) !== 0 && num(t.odometer_start) > 0).flatMap(t => {
+          const z = zeroKmTrips.filter(p => p.date < date && p.date >= addDays(date, -3) && num(p.odometer_start) === num(t.odometer_start))
+            .sort((a, b) => b.date.localeCompare(a.date))[0];
+          return z ? [{
+            row_id: t.id, amount: num(t.fuel_cost), trip_id: z.id, trip_date: z.date,
+            route: `${(z.origin || '').trim() || '-'} → ${(z.destination || '').trim() || '-'}`,
+          }] : [];
+        }),
       };
 
-      if (T.length === 0) { // วันมีน้ำมันไม่มีเที่ยว → ยกไปเที่ยวถัดไป
-        if (ownS || ownMl) { carry.push({ date, s: ownS, ml: ownMl }); day.carried_out = fromS(ownS); }
+      if (T.length === 0) { // วันมีน้ำมันไม่มีเที่ยว → ต้นทุนของวันนั้นเอง ไม่ยกไปเที่ยวถัดไป
         if (ownS || allKm) hist.push({ date, fuelS: ownS, km: allKm });
         if (inRange(date)) days.push(day);
         continue;
       }
 
-      const poolS = ownS + carry.reduce((a, c) => a + c.s, 0);
-      const poolMl = ownMl + carry.reduce((a, c) => a + c.ml, 0);
-      if (inRange(date)) carriedInBeforeS += carry.filter(c => c.date < from).reduce((a, c) => a + c.s, 0);
-      carry = [];
+      const poolS = ownS, poolMl = ownMl;
 
       // ระยะทาง + กลุ่มไมล์
       const info = T.map((t, i) => ({ t, i, km: hasKm(t) ? kmOf(t) : null as number | null, grp: i }));
@@ -210,18 +226,19 @@ export function buildTripProfit(rows: TPRow[], opts: TripProfitOptions): TripPro
 
       const fuelS = info.map(() => 0), ml = info.map(() => 0);
       const mode: FuelMode[] = info.map(() => 'actual');
+      // ในกลุ่มไมล์: เที่ยวที่มีไมล์ (เที่ยวหลัก) รับทั้งก้อน เที่ยวไมล์ 0 ได้ 0 ; กลุ่มเดี่ยวไม่ทราบระยะ = รับเอง
+      const hostW = (m: typeof info) => m.map(x => (x.km != null || m.length === 1 ? 1 : 0));
       const spreadInGroups = (totS: number, totMl: number, weights: number[]) => {
         const gS = splitByWeight(totS, weights), gMl = splitByWeight(totMl, weights);
         gKeys.forEach((k, j) => {
           const m = groups.get(k)!;
-          const sub = splitByWeight(gS[j], m.map(() => 1)), subMl = splitByWeight(gMl[j], m.map(() => 1));
+          const sub = splitByWeight(gS[j], hostW(m)), subMl = splitByWeight(gMl[j], hostW(m));
           m.forEach((x, q) => { fuelS[x.i] = sub[q]; ml[x.i] = subMl[q]; });
         });
       };
       if (poolS > 0 || poolMl > 0) {
         if (knownKm > 0) spreadInGroups(poolS, poolMl, gKm);
-        else spreadInGroups(poolS, poolMl, gKeys.map(k => groups.get(k)!.length)); // ไม่ทราบระยะทั้งวัน → หารเท่าทุกเที่ยว
-        day.fuel_pool = fromS(poolS);
+        else spreadInGroups(poolS, poolMl, gKeys.map(() => 1)); // ไม่ทราบระยะทั้งวัน → หารเท่าทุกเที่ยว (ทุกกลุ่มเป็นเที่ยวเดี่ยว)
       } else {
         // ประมาณการ: Σน้ำมัน ÷ Σกม. (ทุกแถว รวมวิ่งเปล่า) ของรถคันนี้ใน estDays วันก่อนหน้า
         const since = addDays(date, -estDays);
@@ -233,7 +250,7 @@ export function buildTripProfit(rows: TPRow[], opts: TripProfitOptions): TripPro
         gKeys.forEach((k, j) => {
           const m = groups.get(k)!;
           if (gKm[j] > 0 && rate > 0) {
-            const sub = splitByWeight(Math.round(rate * gKm[j]), m.map(() => 1));
+            const sub = splitByWeight(Math.round(rate * gKm[j]), hostW(m));
             m.forEach((x, q) => { fuelS[x.i] = sub[q]; mode[x.i] = 'estimate'; });
           } else m.forEach(x => { mode[x.i] = 'no_data'; });
         });
@@ -267,16 +284,8 @@ export function buildTripProfit(rows: TPRow[], opts: TripProfitOptions): TripPro
       }
       trips.push(...dayTrips);
 
-      const sumS = (f: (t: TPTrip) => number) => fromS(dayTrips.reduce((a, t) => a + toS(f(t)), 0));
-      day.km = dayTrips.reduce((a, t) => a + (t.km || 0), 0);
-      day.fuel_estimated = sumS(t => (t.fuel_mode === 'estimate' ? t.fuel : 0));
-      day.pay = sumS(t => t.pay); day.cost = sumS(t => t.cost); day.revenue = sumS(t => t.revenue); day.profit = sumS(t => t.profit);
+      day.fuel_estimated = fromS(dayTrips.reduce((a, t) => a + (t.fuel_mode === 'estimate' ? toS(t.fuel) : 0), 0));
       days.push(day);
-    }
-    // น้ำมันที่ยังไม่มีเที่ยวถัดไป (ในข้อมูลที่ส่งมา) → ยังไม่ได้จัดสรร/ยกไปหลังช่วง
-    for (const c of carry) if (inRange(c.date)) {
-      pending.push({ vehicle, plate_label: plateLabel, from: c.date, amount: fromS(c.s) });
-      pendingOutS += c.s;
     }
   }
 
@@ -300,10 +309,9 @@ export function buildTripProfit(rows: TPRow[], opts: TripProfitOptions): TripPro
   const totals = summarizeTrips(trips, other_expenses);
   totals.off_trip_revenue = r2(days.reduce((a, d) => a + d.off_trip.revenue, 0));
   totals.off_trip_pay = r2(days.reduce((a, d) => a + d.off_trip.pay, 0));
-  totals.carried_in_before = fromS(carriedInBeforeS);
-  totals.pending_out = fromS(pendingOutS);
+  totals.fuel_no_trip = fromS(days.reduce((a, d) => a + toS(d.fuel_no_trip), 0));
 
-  return { from, to, margin, trips, days, other_expenses, totals, pending };
+  return { from, to, margin, trips, days, other_expenses, totals };
 }
 
 /** สรุปยอดของชุดเที่ยว (ใช้ทั้งทั้งช่วงและหลังกรองในหน้า) — ต้นทุน/กำไรต่อ กม. นับเฉพาะหน่วยที่ทราบระยะและใช้น้ำมันจริง */
@@ -327,13 +335,13 @@ export function summarizeTrips(trips: TPTrip[], others: TPOtherExpense[] = []): 
     pay: S(t => t.pay), cost: S(t => t.cost), revenue: S(t => t.revenue), profit,
     cost_per_km: ukm ? r2(uc / 100 / ukm) : null, profit_per_km: ukm ? r2(up / 100 / ukm) : null,
     other_expenses: other, profit_after_other: r2(profit - other),
-    off_trip_revenue: 0, off_trip_pay: 0, carried_in_before: 0, pending_out: 0,
+    off_trip_revenue: 0, off_trip_pay: 0, fuel_no_trip: 0,
   };
 }
 
 /** กระทบยอดกับรายงานรายเดือน (buildMonthlyReport ของเดือนเดียวกัน ไม่มีตัวกรอง)
  *  net_profit รายงาน = กำไรจากเที่ยว + น้ำมันประมาณการ (คืน เพราะไม่ใช่เงินจริง) + รายได้นอกเที่ยว − ค่าเที่ยวนอกเที่ยว
- *                      + น้ำมันยกมาจากก่อนเดือน − น้ำมันยกไป/ยังไม่จัดสรร − ค่าใช้จ่ายอื่น − ค่าใช้จ่ายเพิ่มเติม − เงินเดือนฐาน */
+ *                      − น้ำมันวันที่ไม่มีเที่ยว − ค่าใช้จ่ายอื่น − ค่าใช้จ่ายเพิ่มเติม − เงินเดือนฐาน */
 export function reconcileWithMonthlyReport(
   t: TPTotals,
   report: { net_profit: number; total_driver_cost: number; total_extra_expenses: number; total_commission: number },
@@ -344,8 +352,7 @@ export function reconcileWithMonthlyReport(
     { label: 'คืนน้ำมันประมาณการ (ไม่ใช่เงินจริง)', amount: t.fuel_estimated },
     { label: 'รายได้นอกเที่ยว', amount: t.off_trip_revenue },
     { label: 'ค่าเที่ยวนอกเที่ยว', amount: -t.off_trip_pay },
-    { label: 'น้ำมันยกมาจากเดือนก่อน (รายงานนับในเดือนก่อน)', amount: t.carried_in_before },
-    { label: 'น้ำมันยกไปเที่ยวหลังสิ้นเดือน/ยังไม่ได้จัดสรร', amount: -t.pending_out },
+    { label: 'น้ำมันวันที่ไม่มีเที่ยว (ไม่ได้ลงเที่ยวใด)', amount: -t.fuel_no_trip },
     { label: 'ค่าใช้จ่ายอื่นของเดือน', amount: -t.other_expenses },
     { label: 'ค่าใช้จ่ายเพิ่มเติม (ตารางค่าใช้จ่าย)', amount: -report.total_extra_expenses },
     { label: 'เงินเดือนฐาน', amount: -base },

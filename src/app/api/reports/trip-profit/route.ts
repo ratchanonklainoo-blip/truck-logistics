@@ -1,5 +1,5 @@
 // GET /api/reports/trip-profit?month_year=YYYY-MM[&margin=10] — กำไรรายเที่ยว/รายวัน (อ่านอย่างเดียว ไม่มีการเขียน DB)
-// สูตรอยู่ที่ lib/tripProfit.ts ; ดึงเที่ยวย้อนก่อนต้นเดือน 60 วัน เพื่อหาอัตราประมาณการและน้ำมันที่ยกมาจากวันไม่มีเที่ยว
+// สูตรอยู่ที่ lib/tripProfit.ts ; ดึงเที่ยวย้อนก่อนต้นเดือน 60 วัน เพื่อหาอัตราประมาณการและป้ายเตือนน้ำมันแถว '-' ต้นเดือน
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { fetchAllRows } from '@/lib/fetchAll';
