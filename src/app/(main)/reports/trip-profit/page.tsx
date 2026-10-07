@@ -138,8 +138,6 @@ export default function TripProfitPage() {
   const days = useMemo(() => (data?.days || []).filter(d =>
     (!fDate || d.date === fDate) && (!fVehicle || d.vehicle === fVehicle) && (!fDriver || d.drivers.includes(fDriver))),
   [data, fDate, fVehicle, fDriver]);
-  const pending = useMemo(() => (data?.pending || []).filter(p =>
-    (!fDate || p.from === fDate) && (!fVehicle || p.vehicle === fVehicle)), [data, fDate, fVehicle]);
   const recon = useMemo(() => {
     if (!data || !report) return null;
     const commission = report.driver_summaries.reduce((a, s) => a + (Number(s.total_commission) || 0), 0);
@@ -220,7 +218,9 @@ export default function TripProfitPage() {
             <Card label="ค่าใช้จ่ายอื่นของเดือน" value={formatCurrency(totals.other_expenses)} tone="text-slate-700"
               sub={fProduct || fRoute.trim() ? 'ไม่แสดงเมื่อกรองสินค้า/เส้นทาง' : `${others.length} รายการ`} />
             <Card label="กำไรหลังหักค่าใช้จ่ายอื่น" value={formatCurrency(totals.profit_after_other)}
-              tone={totals.profit_after_other < 0 ? 'text-red-600' : 'text-emerald-700'} sub="ยังไม่หักเงินเดือนฐาน/ค่าใช้จ่ายประจำ" />
+              tone={totals.profit_after_other < 0 ? 'text-red-600' : 'text-emerald-700'} sub="ยังไม่หักน้ำมันวันไม่มีเที่ยว/เงินเดือนฐาน/ค่าใช้จ่ายประจำ" />
+            <Card label="น้ำมันวันที่ไม่มีเที่ยว" value={formatCurrency(daySum(d => d.fuel_no_trip))} tone="text-orange-700"
+              sub="ไม่ได้ลงเที่ยวใด · ดูป้ายเตือนในสรุปรายวัน" />
           </div>
 
           {/* ── ตารางรายเที่ยว ── */}
@@ -258,7 +258,9 @@ export default function TripProfitPage() {
                       <td className="px-3 py-2 text-right whitespace-nowrap">
                         {t.fuel_mode === 'no_data'
                           ? <span className="text-xs text-slate-400">ไม่มีข้อมูลน้ำมัน/ระยะทาง</span>
-                          : <>{baht(t.fuel)}{t.fuel_mode === 'estimate' && <div className="text-[10px] font-semibold text-amber-600">ประมาณการ</div>}</>}
+                          : t.group_host
+                            ? <>{baht(t.fuel)}<div className="text-[10px] text-slate-400">น้ำมันอยู่ที่รอบ {t.group_host}</div></>
+                            : <>{baht(t.fuel)}{t.fuel_mode === 'estimate' && <div className="text-[10px] font-semibold text-amber-600">ประมาณการ</div>}</>}
                       </td>
                       <td className="px-3 py-2 text-right">{baht(t.pay)}</td>
                       <td className="px-3 py-2 text-right">{baht(t.cost)}</td>
@@ -302,7 +304,7 @@ export default function TripProfitPage() {
               </table>
             </div>
             <div className="px-4 py-2 text-[11px] text-slate-500 border-t border-slate-100 space-y-0.5">
-              <div>ค่าน้ำมันของรถแต่ละวัน = ผลรวมค่าน้ำมันที่บันทึกในวันนั้น (+ ยอดยกมาจากวันที่ไม่มีเที่ยว) กระจายตามระยะทาง · เที่ยวไมล์ 0 ในรอบน้ำมันเดียวกันแบ่งเท่ากัน</div>
+              <div>ค่าน้ำมันของรถแต่ละวัน = ผลรวมค่าน้ำมันที่เติมในวันนั้น (ไม่ยกข้ามวัน) กระจายตามระยะทาง · เที่ยวไมล์ 0 ในรอบน้ำมันเดียวกันได้ 0 (น้ำมันอยู่ที่เที่ยวที่มีไมล์)</div>
               <div>วันที่ไม่ได้เติมน้ำมัน ใช้ต้นทุนน้ำมัน/กม. เฉลี่ย 30 วันก่อนหน้าของรถคันนั้น (ประมาณการ) · ต้นทุน/กม. และกำไร/กม. ไม่นับเที่ยวที่ไม่ทราบระยะ</div>
             </div>
           </div>
@@ -318,50 +320,40 @@ export default function TripProfitPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-[#1E3A5F] text-white text-xs">
-                    {['วันที่', 'รถ / คนขับ', 'เที่ยว', 'ระยะ (กม.)', 'น้ำมันของวัน', 'ยกมา', 'น้ำมันจัดสรร', 'ค่าเที่ยว', 'ต้นทุน', 'รายได้', 'กำไร', 'นอกเที่ยว']
-                      .map((h, i) => <th key={h} className={`px-3 py-2.5 font-semibold whitespace-nowrap ${i < 2 ? 'text-left' : i === 11 ? 'text-left' : 'text-right'}`}>{h}</th>)}
+                    {['วันที่', 'รถ / คนขับ', 'เที่ยว', 'กม.วิ่งจริง', 'น้ำมันที่เติม', 'ค่าเที่ยว', 'ต้นทุนวัน', 'รายได้', 'กำไรวัน', 'ต้นทุน/กม.', 'หมายเหตุ']
+                      .map((h, i) => <th key={h} className={`px-3 py-2.5 font-semibold whitespace-nowrap ${i < 2 || i === 10 ? 'text-left' : 'text-right'}`}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {days.length === 0 && <tr><td colSpan={12} className="text-center py-8 text-slate-400">ไม่มีข้อมูล</td></tr>}
-                  {days.map(d => {
-                    const fuelShown = d.trip_count === 0 ? 0 : d.fuel_pool + d.fuel_estimated;
-                    return (
-                      <tr key={`${d.vehicle}|${d.date}`} className={d.trip_count === 0 ? 'bg-slate-50 text-slate-500' : COLOR_ROW[profitColorOf(d.profit, d.revenue)]}>
-                        <td className="px-3 py-2 whitespace-nowrap">{formatThaiDate(d.date, true)}</td>
-                        <td className="px-3 py-2 whitespace-nowrap text-xs">{d.plate_label}<div className="text-slate-400">{d.drivers.join(', ')}</div></td>
-                        <td className="px-3 py-2 text-right">{d.trip_count || '-'}</td>
-                        <td className="px-3 py-2 text-right">{d.km ? formatNumber(d.km) : '-'}</td>
-                        <td className="px-3 py-2 text-right">{d.fuel_own ? baht(d.fuel_own) : '-'}</td>
-                        <td className="px-3 py-2 text-right text-xs whitespace-nowrap">
-                          {d.carried_in.length ? d.carried_in.map(c => <div key={c.from}>{baht(c.amount)} <span className="text-slate-400">(จาก {formatThaiDate(c.from, true)})</span></div>) : '-'}
-                        </td>
-                        <td className="px-3 py-2 text-right whitespace-nowrap">
-                          {d.trip_count === 0
-                            ? (d.carried_out ? <span className="text-xs text-amber-700">ไม่มีเที่ยว → ยกไปเที่ยวถัดไป {baht(d.carried_out)}</span> : '-')
-                            : fuelShown === 0 ? <span className="text-xs text-slate-400">ไม่มีข้อมูลน้ำมัน/ระยะทาง</span>
-                            : <>{baht(fuelShown)}{d.fuel_estimated > 0 && <div className="text-[10px] font-semibold text-amber-600">ประมาณการ {baht(d.fuel_estimated)}{d.est_rate ? ` (${baht(d.est_rate)} บ./กม.)` : ''}</div>}</>}
-                        </td>
-                        <td className="px-3 py-2 text-right">{d.trip_count ? baht(d.pay) : '-'}</td>
-                        <td className="px-3 py-2 text-right">{d.trip_count ? baht(d.cost) : '-'}</td>
-                        <td className="px-3 py-2 text-right">{d.trip_count ? baht(d.revenue) : '-'}</td>
-                        <td className={`px-3 py-2 text-right font-semibold ${d.trip_count ? COLOR_TEXT[profitColorOf(d.profit, d.revenue)] : ''}`}>{d.trip_count ? baht(d.profit) : '-'}</td>
-                        <td className="px-3 py-2 text-xs whitespace-nowrap">
-                          {d.off_trip.rows === 0 ? '-' : <>
-                            {d.off_trip.rows} แถว{d.off_trip.km ? ` · วิ่งเปล่า ${formatNumber(d.off_trip.km)} กม.` : ''}
-                            {d.off_trip.other ? ` · ค่าใช้จ่ายอื่น ${baht(d.off_trip.other)}` : ''}
-                            {d.off_trip.revenue ? ` · รายได้ ${baht(d.off_trip.revenue)}` : ''}
-                            {d.off_trip.pay ? ` · ค่าเที่ยว ${baht(d.off_trip.pay)}` : ''}
-                          </>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {pending.map(p => (
-                    <tr key={`pending|${p.vehicle}|${p.from}`} className="bg-amber-50 text-amber-800 text-xs">
-                      <td className="px-3 py-2 whitespace-nowrap">{formatThaiDate(p.from, true)}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">{p.plate_label}</td>
-                      <td className="px-3 py-2" colSpan={10}>น้ำมันที่ยังไม่ได้จัดสรร {baht(p.amount)} บาท — ยังไม่มีเที่ยวถัดไปในเดือนนี้ (จะยกไปรวมกับเที่ยวถัดไปของรถคันนี้)</td>
+                  {days.length === 0 && <tr><td colSpan={11} className="text-center py-8 text-slate-400">ไม่มีข้อมูล</td></tr>}
+                  {days.map(d => (
+                    <tr key={`${d.vehicle}|${d.date}`} className={d.trip_count === 0 ? 'bg-slate-50 text-slate-500' : COLOR_ROW[profitColorOf(d.profit, d.revenue)]}>
+                      <td className="px-3 py-2 whitespace-nowrap">{formatThaiDate(d.date, true)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-xs">{d.plate_label}<div className="text-slate-400">{d.drivers.join(', ')}</div></td>
+                      <td className="px-3 py-2 text-right">{d.trip_count || '-'}</td>
+                      <td className="px-3 py-2 text-right">{d.km ? formatNumber(d.km) : '-'}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        {d.fuel_own ? <>{baht(d.fuel_own)}{d.fills > 1 && <div className="text-[10px] text-slate-400">เติม {d.fills} ครั้ง</div>}</> : '-'}
+                      </td>
+                      <td className="px-3 py-2 text-right">{d.pay ? baht(d.pay) : '-'}</td>
+                      <td className="px-3 py-2 text-right">{baht(d.cost)}</td>
+                      <td className="px-3 py-2 text-right">{d.revenue ? baht(d.revenue) : '-'}</td>
+                      <td className={`px-3 py-2 text-right font-semibold ${COLOR_TEXT[profitColorOf(d.profit, d.revenue)]}`}>{baht(d.profit)}</td>
+                      <td className="px-3 py-2 text-right">{d.cost_per_km == null ? '-' : baht(d.cost_per_km)}</td>
+                      <td className="px-3 py-2 text-xs min-w-[200px]">
+                        {d.hints.map(h => (
+                          <div key={h.row_id} className="font-medium text-amber-700">
+                            ⚠ น้ำมันนี้ ({baht(h.amount)}) น่าจะเป็นของเที่ยว {h.route} วันที่ {formatThaiDate(h.trip_date, true)}
+                          </div>
+                        ))}
+                        {d.trip_count === 0 && d.fuel_own !== 0 && !d.hints.length && <div className="text-amber-700">ไม่มีเที่ยว — น้ำมันเป็นต้นทุนของวันนี้</div>}
+                        {d.fuel_estimated > 0 && <div className="text-slate-400">รายเที่ยวใช้น้ำมันประมาณการ {baht(d.fuel_estimated)}{d.est_rate ? ` (${baht(d.est_rate)} บ./กม.)` : ''} ไม่นับในต้นทุนวัน</div>}
+                        {d.off_trip.rows > 0 && <div className="text-slate-500">
+                          นอกเที่ยว {d.off_trip.rows} แถว{d.off_trip.km ? ` · วิ่งเปล่า ${formatNumber(d.off_trip.km)} กม.` : ''}
+                          {d.off_trip.other ? ` · ค่าใช้จ่ายอื่น ${baht(d.off_trip.other)}` : ''}
+                        </div>}
+                        {!d.hints.length && !d.fuel_estimated && !d.off_trip.rows && !(d.trip_count === 0 && d.fuel_own !== 0) && '-'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -372,17 +364,19 @@ export default function TripProfitPage() {
                       <td className="px-3 py-2 text-right">{daySum(d => d.trip_count)}</td>
                       <td className="px-3 py-2 text-right">{formatNumber(daySum(d => d.km))}</td>
                       <td className="px-3 py-2 text-right">{baht(daySum(d => d.fuel_own))}</td>
-                      <td className="px-3 py-2 text-right">{baht(daySum(d => d.carried_in.reduce((a, c) => a + c.amount, 0)))}</td>
-                      <td className="px-3 py-2 text-right">{baht(daySum(d => (d.trip_count ? d.fuel_pool + d.fuel_estimated : 0)))}</td>
                       <td className="px-3 py-2 text-right">{baht(daySum(d => d.pay))}</td>
                       <td className="px-3 py-2 text-right">{baht(daySum(d => d.cost))}</td>
                       <td className="px-3 py-2 text-right">{baht(daySum(d => d.revenue))}</td>
                       <td className="px-3 py-2 text-right">{baht(daySum(d => d.profit))}</td>
+                      <td className="px-3 py-2 text-right">{daySum(d => d.km) ? baht(daySum(d => d.cost) / daySum(d => d.km)) : '-'}</td>
                       <td className="px-3 py-2 text-xs">ค่าใช้จ่ายอื่นนอกเที่ยว {baht(daySum(d => d.off_trip.other))}</td>
                     </tr>
                   </tfoot>
                 )}
               </table>
+            </div>
+            <div className="px-4 py-2 text-[11px] text-slate-500 border-t border-slate-100">
+              ต้นทุนวัน = น้ำมันที่เติมวันนั้น (ทุกครั้ง) + ค่าเที่ยว · กำไรวัน = รายได้ − ต้นทุนวัน · ต้นทุน/กม. = ต้นทุนวัน ÷ กม. ที่วิ่งจริงของวัน (รวมวิ่งเปล่า) · ไม่ยกน้ำมันข้ามวัน ไม่ใช้ประมาณการ · ค่าใช้จ่ายอื่นแยกอยู่ด้านล่าง
             </div>
           </div>
 
