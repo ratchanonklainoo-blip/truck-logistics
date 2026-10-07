@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import OpenAI from 'openai'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
-
 export interface ParsedJob {
   origin: string | null
   destination: string | null
@@ -61,10 +57,14 @@ export async function POST(request: NextRequest) {
 
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(
-        { error: 'ไม่ได้ตั้งค่า OpenAI API Key' },
+        { error: 'ระบบ AI ยังไม่ได้ตั้งค่า (ไม่มี OpenAI API Key) กรุณาติดต่อผู้ดูแลระบบ' },
         { status: 500 }
       )
     }
+
+    // สร้าง client ตอนรัน request — ถ้าสร้างระดับ module, `next build` จะ throw ตอน
+    // "Collecting page data" ในโปรเจกต์ที่ไม่ได้ตั้ง OPENAI_API_KEY
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
