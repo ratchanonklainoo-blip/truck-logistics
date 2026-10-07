@@ -44,6 +44,7 @@ export interface TPTrip {
   km: number | null;               // ระยะของเที่ยวนี้ (null = ไม่ทราบระยะทาง)
   group_host: number | null;       // รอบที่ของเที่ยวที่มีไมล์ซึ่งเที่ยวนี้รวมไมล์อยู่ด้วย
   group_size: number;              // เที่ยวหลักของกลุ่ม: จำนวนเที่ยวที่ใช้ไมล์ร่วมกัน (1 = เที่ยวเดี่ยว)
+  group_profit: number | null;     // เที่ยวหลักของกลุ่ม: Σ กำไรทุกเที่ยวในกลุ่ม (แสดงอย่างเดียว ไม่แทนกำไรรายเที่ยว) ; อื่น = null
   fuel: number; litres: number; fuel_mode: FuelMode;
   pay: number; cost: number; revenue: number; profit: number;
   cost_per_km: number | null; profit_per_km: number | null; min_price: number | null;
@@ -265,7 +266,7 @@ export function buildTripProfit(rows: TPRow[], opts: TripProfitOptions): TripPro
           id: t.id, date, vehicle, plate_label: plateLabel,
           driver_id: t.driver_id, driver_name: t.drivers!.nickname || t.drivers!.name,
           round: k + 1, product: (t.product || '').trim(), origin: (t.origin || '').trim(), destination: (t.destination || '').trim(),
-          km: x.km, group_host: x.grp !== x.i ? x.grp + 1 : null, group_size: 1,
+          km: x.km, group_host: x.grp !== x.i ? x.grp + 1 : null, group_size: 1, group_profit: null,
           fuel, litres: ml[k] / 1000, fuel_mode: mode[k],
           pay, cost, revenue, profit,
           cost_per_km: x.km ? r2(cost / x.km) : null, profit_per_km: x.km ? r2(profit / x.km) : null,
@@ -279,7 +280,7 @@ export function buildTripProfit(rows: TPRow[], opts: TripProfitOptions): TripPro
         const mem = dayTrips.filter(m => m.group_host === h.round);
         if (!mem.length || !h.km) continue;
         const gc = [h, ...mem].reduce((a, t) => a + t.cost, 0), gp = [h, ...mem].reduce((a, t) => a + t.profit, 0);
-        h.group_size = mem.length + 1;
+        h.group_size = mem.length + 1; h.group_profit = r2(gp);
         h.cost_per_km = r2(gc / h.km); h.profit_per_km = r2(gp / h.km); h.min_price = r2(gc * (1 + margin));
       }
       trips.push(...dayTrips);

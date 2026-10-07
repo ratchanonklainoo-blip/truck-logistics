@@ -76,6 +76,10 @@ eq('สี: ขาดทุน=แดง, กำไร<10%=เหลือง, �
   eq('ก.ย.: ไม่มีน้ำมันวันไม่มีเที่ยว', sep.totals.fuel_no_trip, 0);
   // 30 ส.ค.: แกลบ (871 กม.) รับ 12,520 ทั้งก้อน ลำพูน (ไมล์ 0 รวมกลุ่ม) ได้ 0 ; วัน 15,000 − 12,520 − 1,500 = 980
   eq('30 ส.ค.: แกลบ 12,520 ลำพูน 0 → −9,820 / +10,800', aug.trips.map(t => [t.fuel, t.profit]), [[12520, -9820], [0, 10800]]);
+  eq('30 ส.ค.: กำไรทั้งกลุ่ม +980 (2 เที่ยว) ที่แกลบ ; ลำพูนอ้างรอบ 1 ; กำไรรายเที่ยวเดิมไม่เปลี่ยน',
+    aug.trips.map(t => [t.group_profit, t.group_size, t.group_host, t.profit]), [[980, 2, null, -9820], [null, 1, 1, 10800]]);
+  eq('30 ส.ค.: กำไรทั้งกลุ่ม = กำไรวัน', aug.trips[0].group_profit, d(aug, '2026-08-30').profit);
+  eq('1 ก.ย.: กำไรทั้งกลุ่ม 3,300 + 1,250 + 1,250 = 5,800 (3 เที่ยว)', [sep.trips[0].group_profit, sep.trips[0].group_size], [5800, 3]);
   eq('30 ส.ค.: วัน ต้นทุน 14,020 กำไร 980 ต้นทุน/กม. 16.10', [d(aug, '2026-08-30').cost, d(aug, '2026-08-30').profit, d(aug, '2026-08-30').cost_per_km], [14020, 980, 16.1]);
   // 31 ส.ค.: วันไม่มีเที่ยว น้ำมัน 8,510 เป็นต้นทุนของวันนั้นเอง + ป้ายเตือน (ไม่ย้ายตัวเลข)
   eq('31 ส.ค.: วัน ต้นทุน 8,510 กำไร −8,510 กม. 562 ต้นทุน/กม. 15.14',
@@ -125,6 +129,7 @@ eq('สี: ขาดทุน=แดง, กำไร<10%=เหลือง, �
     row({ date: '2026-06-20', odometer_start: 1500, odometer_end: 2000, created_at: '2026-06-20T11:00:00Z', product: 'หนึ่ง' }),
   ]);
   eq('รอบที่ตามไมล์ต้น', r.trips.map(t => [t.round, t.product]), [[1, 'หนึ่ง'], [2, 'สอง']]);
+  eq('เที่ยวเดี่ยว: ไม่มีกำไรทั้งกลุ่ม', r.trips.map(t => t.group_profit), [null, null]);
 }
 // ── 7) กระทบยอด ──
 eq('reconcile: สูตรบรรทัดรวมถูก', reconcileWithMonthlyReport(
@@ -192,6 +197,18 @@ if (process.argv.includes('--live')) {
   eq('live 1 ก.ย. จง: ต้นทุนวัน 15,200 กำไร 5,800 ต้นทุน/กม. 16.65 ; เชียงใหม่→พิษณุโลก +1,250',
     [s1.cost, s1.profit, s1.cost_per_km, sep.trips.find(t => t.date === '2026-09-01' && t.product === 'ข้าวโพดแห้ง')!.profit], [15200, 5800, 16.65, 1250]);
   const aug = buildTripProfit(all, { from: '2026-08-01', to: '2026-08-31' });
+  const a30 = aug.trips.filter(t => t.date === '2026-08-30' && t.vehicle === '71-1831-71-1832');
+  eq('live 30 ส.ค. จง: กำไรทั้งกลุ่ม +980 (2 เที่ยว) ที่แกลบ ; ข้าวไมล์ 0 อ้างรอบ 1',
+    a30.map(t => [t.product, t.profit, t.group_profit, t.group_size, t.group_host]), [['แกลบ', -9820, 980, 2, null], ['ข้าว', 10800, null, 1, 1]]);
+  // ทุกกลุ่มทุกเดือน: กำไรทั้งกลุ่ม = Σ กำไรรายเที่ยวของกลุ่ม (ไม่สร้างตัวเลขใหม่)
+  for (const ym of months) {
+    const r = buildTripProfit(all, { from: `${ym}-01`, to: lastDayOf(ym) });
+    const badG = r.trips.filter(h => h.group_size > 1).filter(h => {
+      const mem = r.trips.filter(m => m.date === h.date && m.vehicle === h.vehicle && m.group_host === h.round);
+      return mem.length + 1 !== h.group_size || Math.round(h.group_profit! * 100) !== [h, ...mem].reduce((a, t) => a + Math.round(t.profit * 100), 0);
+    });
+    eq(`live ${ym}: กำไรทั้งกลุ่ม = Σ กำไรเที่ยวในกลุ่ม (${r.trips.filter(h => h.group_size > 1).length} กลุ่ม)`, badG.map(h => `${h.date} ${h.vehicle}`), []);
+  }
   eq('live ส.ค.: ป้ายเตือน 3 แถว (เอก 28,30 / จง 31)', aug.days.filter(d => d.hints.length).map(d => [d.date, d.hints[0].trip_date, d.hints[0].amount]).sort(),
     [['2026-08-28', '2026-08-27', 11529.9], ['2026-08-30', '2026-08-29', 9130.2], ['2026-08-31', '2026-08-30', 8510]]);
   // 19 เม.ย.: อัตราเดิม 23.13 ยอดประมาณการเดิม 6,915.10 + 6,915.09 = 13,830.19 ลงเที่ยวหลักของกลุ่มทั้งก้อน
