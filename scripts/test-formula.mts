@@ -158,8 +158,15 @@ eq('ทะเบียนรายงาน: plate ส่วนใหญ่ข�
   eq('#20 แถว -→- ไม่เช็คซ้ำ', findDuplicateTrips({ ...base, origin: '-', destination: '' }, old as never).length, 0);
   const odo = [{ id: 'x', date: '2026-05-09', driver_id: 'd1', driver_plate: P, origin: 'A', destination: 'B', odometer_start: 1000, odometer_end: 1500 }];
   eq('#20 ไมล์ถอยหลัง', odometerWarnings({ ...base, odometer_start: 1400, odometer_end: 1800 }, odo).length, 1);
-  eq('#20 ไมล์ซ้ำ', odometerWarnings({ ...base, odometer_start: 1500, odometer_end: 1500 }, odo).length, 1);
-  eq('#20 ไมล์ต่อเนื่องปกติ ไม่เตือน', odometerWarnings({ ...base, odometer_start: 1501, odometer_end: 1800 }, odo), []);
+  const dupOdo = (w: string[]) => w.filter(x => x.startsWith('เลขไมล์ซ้ำ')).length;
+  eq('#20 ไมล์ซ้ำจริง (ต้น+ปลายตรงกัน มีระยะ) เตือน', dupOdo(odometerWarnings({ ...base, odometer_start: 1000, odometer_end: 1500 }, odo)), 1);
+  eq('#20 ไมล์ต่อเนื่อง ต้น = ปลายเที่ยวก่อน ไม่เตือน', odometerWarnings({ ...base, odometer_start: 1500, odometer_end: 1800 }, odo), []);
+  eq('#20 ไมล์ต่อเนื่อง 1500→1500 (0 กม.) ไม่เตือน', odometerWarnings({ ...base, odometer_start: 1500, odometer_end: 1500 }, odo), []);
+  eq('#20 ไมล์ต่อเนื่อง +1 ไม่เตือน', odometerWarnings({ ...base, odometer_start: 1501, odometer_end: 1800 }, odo), []);
+  const zero = [{ id: 'z', date: '2026-05-09', driver_id: 'd1', driver_plate: P, origin: 'เชียงราย', destination: 'ลำพูน', odometer_start: 2000, odometer_end: 2000 }];
+  eq('#20 0 กม. คนละวัน ไม่เตือน', odometerWarnings({ ...base, odometer_start: 2000, odometer_end: 2000 }, zero), []);
+  eq('#20 0 กม. วันเดียวกัน เส้นทางเดียวกัน เตือน', dupOdo(odometerWarnings({ ...base, date: '2026-05-09', origin: 'เชียงราย ', odometer_start: 2000, odometer_end: 2000 }, zero)), 1);
+  eq('#20 0 กม. วันเดียวกัน คนละเส้นทาง ไม่เตือน', dupOdo(odometerWarnings({ ...base, date: '2026-05-09', destination: 'พะเยา', odometer_start: 2000, odometer_end: 2000 }, zero)), 0);
   eq('#20 รถคันอื่นไม่เตือน', odometerWarnings({ ...base, driver_plate: '70-0001', odometer_start: 1400 }, odo), []);
   eq('#20 ค่าขนส่ง 0 ค่าเที่ยว > 0 / กลับกัน / ปกติ / แถว -→-', [
     payMismatch({ ...base, transport_price: 0, trip_pay: 700 }), payMismatch({ ...base, transport_price: 7000, trip_pay: 0 }),

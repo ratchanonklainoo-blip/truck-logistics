@@ -44,7 +44,9 @@ export function findDuplicateTrips<T extends CheckTrip>(trip: CheckTrip, others:
     && place(o.origin) === place(trip.origin) && place(o.destination) === place(trip.destination));
 }
 
-/** เตือนเลขไมล์: ซ้ำกับเที่ยวอื่นของรถคันเดียวกัน หรือไมล์ต้นน้อยกว่าไมล์ปลายของเที่ยวล่าสุดก่อนหน้า (ถอยหลัง) */
+/** เตือนเลขไมล์: ซ้ำกับเที่ยวอื่นของรถคันเดียวกัน หรือไมล์ต้นน้อยกว่าไมล์ปลายของเที่ยวล่าสุดก่อนหน้า (ถอยหลัง)
+ *  ซ้ำ = ไมล์ต้นและไมล์ปลายตรงกันทั้งคู่ และ (มีระยะทาง หรือเที่ยว 0 กม. วันเดียวกัน+เส้นทางเดียวกัน)
+ *  ไมล์ต้น = ไมล์ปลายเที่ยวก่อน คือเที่ยวต่อเนื่องปกติ ไม่เตือน */
 export function odometerWarnings(trip: CheckTrip, others: CheckTrip[]): string[] {
   const start = num(trip.odometer_start), end = num(trip.odometer_end);
   const same = others.filter(o => o.id !== trip.id && sameVehicle(trip, o));
@@ -52,7 +54,10 @@ export function odometerWarnings(trip: CheckTrip, others: CheckTrip[]): string[]
   if (start > 0 && end > 0 && end < start) warns.push(`ไมล์ปลาย (${end.toLocaleString()}) น้อยกว่าไมล์ต้น (${start.toLocaleString()})`);
   for (const o of same) {
     const os = num(o.odometer_start), oe = num(o.odometer_end);
-    if ((start > 0 && (start === os || start === oe)) || (end > 0 && (end === os || end === oe))) {
+    const bothMatch = start > 0 && end > 0 && start === os && end === oe;
+    const sameDayRoute = o.date === trip.date
+      && place(o.origin) === place(trip.origin) && place(o.destination) === place(trip.destination);
+    if (bothMatch && (end > start || sameDayRoute)) {
       warns.push(`เลขไมล์ซ้ำกับเที่ยววันที่ ${o.date} (${o.origin || '-'} → ${o.destination || '-'} ไมล์ ${os.toLocaleString()}–${oe.toLocaleString()})`);
     }
   }
