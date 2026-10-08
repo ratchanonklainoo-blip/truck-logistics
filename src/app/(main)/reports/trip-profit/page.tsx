@@ -21,7 +21,7 @@ function displayMonthYear(my: string): string {
   return `${THAI_MONTHS[m - 1]} ${adToBE(y)}`;
 }
 const baht = (n: number) => formatNumber(n, 2);
-const COLOR_TEXT: Record<ProfitColor, string> = { green: 'text-emerald-700', yellow: 'text-amber-600', red: 'text-red-600' };
+const COLOR_TEXT: Record<ProfitColor, string> = { green: 'text-emerald-700', yellow: 'text-amber-700', red: 'text-red-600' };
 const COLOR_ROW: Record<ProfitColor, string> = { green: '', yellow: 'bg-amber-50/60', red: 'bg-red-50/60' };
 const profitColorOf = (profit: number, revenue: number): ProfitColor =>
   profit < 0 || revenue <= 0 ? 'red' : profit < revenue * 0.1 ? 'yellow' : 'green';
@@ -270,7 +270,7 @@ export default function TripProfitPage() {
         </div>
         <div className="flex items-center gap-2">
           {!loading && data && (
-            <a href="#trip-list" className="flex items-center gap-1 px-3 py-2 text-sm text-blue-700 border border-blue-200 bg-blue-50 rounded-lg hover:bg-blue-100">
+            <a href="#trip-list" className="flex items-center gap-1 min-h-11 px-3 py-2 text-sm text-blue-700 border border-blue-200 bg-blue-50 rounded-lg hover:bg-blue-100">
               ไปที่รายเที่ยว <ArrowDown className="w-4 h-4" />
             </a>
           )}
@@ -346,11 +346,11 @@ export default function TripProfitPage() {
           </div>
 
           {/* ── ตารางรายเที่ยว ── */}
-          <div id="trip-list" className="scroll-mt-4 bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+          <div id="trip-list" className="scroll-mt-16 lg:scroll-mt-4 bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
               <span className="font-semibold text-slate-700 text-sm">รายเที่ยว ({trips.length})</span>
               <span className="text-xs text-slate-500">
-                <span className="text-emerald-700">● กำไร</span> · <span className="text-amber-600">● กำไรต่ำกว่า 10%</span> · <span className="text-red-600">● ขาดทุน</span>
+                <span className="text-emerald-700">● กำไร</span> · <span className="text-amber-700">● กำไรต่ำกว่า 10%</span> · <span className="text-red-600">● ขาดทุน</span>
               </span>
             </div>
             {/* จอ ≤ 640px: การ์ด */}
