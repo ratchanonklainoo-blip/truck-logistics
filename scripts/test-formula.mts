@@ -12,7 +12,7 @@ import {
 } from '../src/lib/payrollCalc.ts';
 import { buildMonthlyReport } from '../src/lib/monthlyReport.ts';
 import { calculateTotals } from '../src/lib/utils.ts';
-import { findDuplicateTrips, odometerWarnings, payMismatch } from '../src/lib/tripChecks.ts';
+import { findDuplicateTrips, odometerWarnings, payMismatch, type CheckTrip } from '../src/lib/tripChecks.ts';
 
 let pass = 0, fail = 0;
 function eq(name: string, got: unknown, want: unknown) {
@@ -167,6 +167,8 @@ eq('ทะเบียนรายงาน: plate ส่วนใหญ่ข�
   eq('#20 0 กม. คนละวัน ไม่เตือน', odometerWarnings({ ...base, odometer_start: 2000, odometer_end: 2000 }, zero), []);
   eq('#20 0 กม. วันเดียวกัน เส้นทางเดียวกัน เตือน', dupOdo(odometerWarnings({ ...base, date: '2026-05-09', origin: 'เชียงราย ', odometer_start: 2000, odometer_end: 2000 }, zero)), 1);
   eq('#20 0 กม. วันเดียวกัน คนละเส้นทาง ไม่เตือน', dupOdo(odometerWarnings({ ...base, date: '2026-05-09', destination: 'พะเยา', odometer_start: 2000, odometer_end: 2000 }, zero)), 0);
+  eq('#20 ซ้ำเต็ม วันเดียวกัน เส้นทางเดียวกัน เตือน', dupOdo(odometerWarnings({ ...base, date: '2026-05-09', origin: 'A', destination: 'B', odometer_start: 1000, odometer_end: 1500 }, odo)), 1);
+  eq('#20 ไมล์ต้นเหมือน แต่ไมล์ปลายต่าง ไม่เตือนซ้ำ', dupOdo(odometerWarnings({ ...base, odometer_start: 1000, odometer_end: 1600 }, odo)), 0);
   eq('#20 รถคันอื่นไม่เตือน', odometerWarnings({ ...base, driver_plate: '70-0001', odometer_start: 1400 }, odo), []);
   eq('#20 ค่าขนส่ง 0 ค่าเที่ยว > 0 / กลับกัน / ปกติ / แถว -→-', [
     payMismatch({ ...base, transport_price: 0, trip_pay: 700 }), payMismatch({ ...base, transport_price: 7000, trip_pay: 0 }),
@@ -294,6 +296,23 @@ if (process.argv.includes('--live')) {
       + `${stored ? ` (ใบที่บันทึก [${stored.status}] ฐาน ${stored.base_salary} สุทธิ ${stored.net_pay})` : ' (ไม่มีใบ)'}`
       + ` | dashboard ${now.net_profit}→${set.net_profit} | รายงาน ${now.net_after_fixed}→${set.net_after_fixed}`);
   }
+  // #20 เลขไมล์ซ้ำ (A′) กับข้อมูลจริงทุกแถว: เทียบแบบเดียวกับ TripForm (ย้อน 60 วัน ถึง +1 วัน) + เที่ยวซ้ำจำลอง (ในหน่วยความจำ ไม่เขียน DB)
+  const odoRows = sqlJson<CheckTrip[]>(`select json_agg(json_build_object('id', t.id, 'date', t.date, 'driver_id', t.driver_id,
+      'origin', t.origin, 'destination', t.destination, 'plate', t.plate, 'odometer_start', t.odometer_start, 'odometer_end', t.odometer_end,
+      'created_at', t.created_at, 'driver_plate', d.license_plate))::text j
+    from trips t left join drivers d on d.id = t.driver_id where t.deleted_at is null`);
+  const dayOf = (s: string) => Date.parse(`${s.slice(0, 10)}T00:00:00Z`) / 86400000;
+  const formWindow = (t: CheckTrip, rows: CheckTrip[]) => rows.filter(o => dayOf(o.date) >= dayOf(t.date) - 60 && dayOf(o.date) <= dayOf(t.date) + 1);
+  const isDupOdo = (t: CheckTrip, rows: CheckTrip[]) => odometerWarnings(t, formWindow(t, rows)).some(w => w.startsWith('เลขไมล์ซ้ำ'));
+  const flagged = odoRows.filter(t => isDupOdo(t, odoRows)).length;
+  console.log(`live #20 เลขไมล์ซ้ำ: ${odoRows.length} แถว เตือน ${flagged} แถว (ก่อนแก้ 363 แถว)`);
+  eq('live #20 เลขไมล์ซ้ำ เตือนไม่เกิน 5% ของแถวจริง (ไม่ใช่ทุกแถว)', flagged <= Math.ceil(odoRows.length * 0.05), true);
+  const moving = odoRows.filter(t => Number(t.odometer_end) > Number(t.odometer_start) && Number(t.odometer_start) > 0);
+  const caught = (mk: (t: CheckTrip) => CheckTrip) => moving.filter(t => isDupOdo(mk(t), odoRows)).length;
+  const nextDay = (d: string) => new Date((dayOf(d) + 1) * 86400000).toISOString().slice(0, 10);
+  eq(`live #20 ซ้ำเต็ม (คัดลอกแถวจริงที่มีระยะ ${moving.length} แถว) จับได้ครบ`, caught(t => ({ ...t, id: `sim-${t.id}` })), moving.length);
+  eq('live #20 ซ้ำคนละวัน (+1 วัน) จับได้ครบ', caught(t => ({ ...t, id: `sim-${t.id}`, date: nextDay(t.date) })), moving.length);
+  eq('live #20 ไมล์ต้นเหมือนแต่ไมล์ปลายต่าง ไม่เตือนซ้ำ', caught(t => ({ ...t, id: `sim-${t.id}`, odometer_end: Number(t.odometer_end) + 7 })), 0);
   console.log(`\nรวม: ${pass} ผ่าน, ${fail} ไม่ผ่าน`);
 }
 process.exitCode = fail ? 1 : 0;
