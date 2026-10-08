@@ -12,7 +12,7 @@ import {
 } from '../src/lib/payrollCalc.ts';
 import { buildMonthlyReport } from '../src/lib/monthlyReport.ts';
 import { calculateTotals } from '../src/lib/utils.ts';
-import { findDuplicateTrips, odometerWarnings, payMismatch, type CheckTrip } from '../src/lib/tripChecks.ts';
+import { findDuplicateTrips, odometerWarnings, payMismatch, missingRouteWarning, zeroKmFuelElsewhereWarnings, type CheckTrip } from '../src/lib/tripChecks.ts';
 
 let pass = 0, fail = 0;
 function eq(name: string, got: unknown, want: unknown) {
@@ -170,6 +170,27 @@ eq('ทะเบียนรายงาน: plate ส่วนใหญ่ข�
   eq('#20 ซ้ำเต็ม วันเดียวกัน เส้นทางเดียวกัน เตือน', dupOdo(odometerWarnings({ ...base, date: '2026-05-09', origin: 'A', destination: 'B', odometer_start: 1000, odometer_end: 1500 }, odo)), 1);
   eq('#20 ไมล์ต้นเหมือน แต่ไมล์ปลายต่าง ไม่เตือนซ้ำ', dupOdo(odometerWarnings({ ...base, odometer_start: 1000, odometer_end: 1600 }, odo)), 0);
   eq('#20 รถคันอื่นไม่เตือน', odometerWarnings({ ...base, driver_plate: '70-0001', odometer_start: 1400 }, odo), []);
+  // W1 แถวมีน้ำมัน/ไมล์ แต่ไม่มีต้นทาง-ปลายทาง (เตือนขณะกรอก ไม่บล็อก)
+  const dash = { ...base, origin: '-', destination: '' };
+  eq('W1 แถว - มีน้ำมัน เตือน', missingRouteWarning({ ...dash, fuel_cost: 8510 })?.includes('น้ำมัน'), true);
+  eq('W1 แถว - มีระยะไมล์ เตือน', missingRouteWarning({ ...dash, odometer_start: 320866, odometer_end: 321428 })?.includes('ไมล์'), true);
+  eq('W1 แถว - ไมล์ต้นอย่างเดียว (ค่าเริ่มต้นฟอร์ม) / เบิกอย่างเดียว ไม่เตือน', [
+    missingRouteWarning({ ...dash, odometer_start: 320866, odometer_end: 0 }), missingRouteWarning({ ...dash, withdraw: 500 } as never)], [null, null]);
+  eq('W1 มีต้นทาง-ปลายทาง ไม่เตือน', missingRouteWarning({ ...base, fuel_cost: 8510, odometer_start: 1, odometer_end: 500 }), null);
+  // W2 เที่ยวไมล์ 0 แต่ไมล์ต้นตรงกับแถว '-' ที่มีน้ำมันและมีระยะ ของรถคันเดียวกัน ±3 วัน (กล่องตรวจก่อนบันทึก)
+  const t30 = { ...base, id: 't', date: '2026-08-30', origin: 'พิษณุโลก', destination: 'ลำพูน', odometer_start: 320866, odometer_end: 320866 };
+  const d31 = { id: 'd', date: '2026-08-31', driver_id: 'd1', driver_plate: P, origin: '-', destination: '-', odometer_start: 320866, odometer_end: 321428, fuel_cost: 8510 };
+  eq('W2 เคสจริง 30 ส.ค. ↔ แถว - 31 ส.ค. เตือน', zeroKmFuelElsewhereWarnings(t30, [d31]).length, 1);
+  eq('W2 ไมล์ปลาย 0 (ไม่ได้กรอก) ก็นับเป็นไมล์ 0', zeroKmFuelElsewhereWarnings({ ...t30, odometer_end: 0 }, [d31]).length, 1);
+  eq('W2 ไม่เตือน: มีระยะ / แถว - ไม่มีน้ำมัน / แถว - ไม่มีระยะ / เกิน 3 วัน / รถคันอื่น / แถวคู่เป็นเที่ยวจริง', [
+    zeroKmFuelElsewhereWarnings({ ...t30, odometer_end: 321000 }, [d31]),
+    zeroKmFuelElsewhereWarnings(t30, [{ ...d31, fuel_cost: 0 }]),
+    zeroKmFuelElsewhereWarnings(t30, [{ ...d31, odometer_end: 320866 }]),
+    zeroKmFuelElsewhereWarnings(t30, [{ ...d31, date: '2026-09-03' }]),
+    zeroKmFuelElsewhereWarnings(t30, [{ ...d31, driver_plate: '70-0001' }]),
+    zeroKmFuelElsewhereWarnings(t30, [{ ...d31, origin: 'ลำพูน', destination: 'เชียงราย' }]),
+  ].map(w => w.length), [0, 0, 0, 0, 0, 0]);
+  eq('W2 ภายใน 3 วัน (ย้อนหลัง) เตือน', zeroKmFuelElsewhereWarnings(t30, [{ ...d31, date: '2026-08-27' }]).length, 1);
   eq('#20 ค่าขนส่ง 0 ค่าเที่ยว > 0 / กลับกัน / ปกติ / แถว -→-', [
     payMismatch({ ...base, transport_price: 0, trip_pay: 700 }), payMismatch({ ...base, transport_price: 7000, trip_pay: 0 }),
     payMismatch({ ...base, transport_price: 7000, trip_pay: 700 }), payMismatch({ ...base, origin: '-', destination: '-', trip_pay: 700 }),
@@ -299,7 +320,7 @@ if (process.argv.includes('--live')) {
   // #20 เลขไมล์ซ้ำ (A′) กับข้อมูลจริงทุกแถว: เทียบแบบเดียวกับ TripForm (ย้อน 60 วัน ถึง +1 วัน) + เที่ยวซ้ำจำลอง (ในหน่วยความจำ ไม่เขียน DB)
   const odoRows = sqlJson<CheckTrip[]>(`select json_agg(json_build_object('id', t.id, 'date', t.date, 'driver_id', t.driver_id,
       'origin', t.origin, 'destination', t.destination, 'plate', t.plate, 'odometer_start', t.odometer_start, 'odometer_end', t.odometer_end,
-      'created_at', t.created_at, 'driver_plate', d.license_plate))::text j
+      'fuel_cost', t.fuel_cost, 'fuel_litres', t.fuel_litres, 'created_at', t.created_at, 'driver_plate', d.license_plate))::text j
     from trips t left join drivers d on d.id = t.driver_id where t.deleted_at is null`);
   const dayOf = (s: string) => Date.parse(`${s.slice(0, 10)}T00:00:00Z`) / 86400000;
   const formWindow = (t: CheckTrip, rows: CheckTrip[]) => rows.filter(o => dayOf(o.date) >= dayOf(t.date) - 60 && dayOf(o.date) <= dayOf(t.date) + 1);
@@ -313,6 +334,12 @@ if (process.argv.includes('--live')) {
   eq(`live #20 ซ้ำเต็ม (คัดลอกแถวจริงที่มีระยะ ${moving.length} แถว) จับได้ครบ`, caught(t => ({ ...t, id: `sim-${t.id}` })), moving.length);
   eq('live #20 ซ้ำคนละวัน (+1 วัน) จับได้ครบ', caught(t => ({ ...t, id: `sim-${t.id}`, date: nextDay(t.date) })), moving.length);
   eq('live #20 ไมล์ต้นเหมือนแต่ไมล์ปลายต่าง ไม่เตือนซ้ำ', caught(t => ({ ...t, id: `sim-${t.id}`, odometer_end: Number(t.odometer_end) + 7 })), 0);
+  // W1/W2 กับข้อมูลจริง (นับอย่างเดียว ตัวเลขเปลี่ยนตามข้อมูลที่เพิ่ม) — W2 ต้องจับเคส 30 ส.ค. 2026 พิษณุโลก→ลำพูน ที่รู้แล้ว
+  const w1 = odoRows.filter(t => missingRouteWarning(t));
+  const w2 = odoRows.filter(t => zeroKmFuelElsewhereWarnings(t, formWindow(t, odoRows)).length);
+  console.log(`live W1 แถวมีน้ำมัน/ไมล์ แต่ไม่มีต้นทาง-ปลายทาง: ${w1.length} แถว | W2 เที่ยวไมล์ 0 ที่ไมล์ไปลงแถว '-': ${w2.length} แถว`);
+  for (const t of w2) console.log(`  W2 ${t.date} ${t.origin}→${t.destination} ไมล์ต้น ${t.odometer_start}`);
+  eq('live W2 จับเคส 30 ส.ค. 2026 พิษณุโลก→ลำพูน', w2.some(t => t.date === '2026-08-30' && t.origin === 'พิษณุโลก' && t.destination === 'ลำพูน'), true);
   console.log(`\nรวม: ${pass} ผ่าน, ${fail} ไม่ผ่าน`);
 }
 process.exitCode = fail ? 1 : 0;

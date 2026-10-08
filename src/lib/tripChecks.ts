@@ -14,6 +14,8 @@ export interface CheckTrip {
   odometer_end?: number | string | null;
   transport_price?: number | string | null;
   trip_pay?: number | string | null;
+  fuel_cost?: number | string | null;
+  fuel_litres?: number | string | null;
   created_at?: string | null;
   /** ทะเบียนของคนขับ (ใช้เมื่อเที่ยวไม่มี plate) */
   driver_plate?: string | null;
@@ -79,4 +81,25 @@ export function payMismatch(trip: CheckTrip): 'no_price' | 'no_pay' | null {
   if (price === 0 && pay > 0) return 'no_price';
   if (price > 0 && pay === 0) return 'no_pay';
   return null;
+}
+
+/** W1 (เตือนขณะกรอก): แถวมีน้ำมันหรือมีระยะไมล์ แต่ต้นทาง-ปลายทางว่าง/'-' ทั้งคู่ → อาจลืมใส่เส้นทาง (ไม่บล็อก) */
+export function missingRouteWarning(trip: CheckTrip): string | null {
+  if (isRealTrip(trip)) return null;
+  const fuel = num(trip.fuel_cost) > 0 || num(trip.fuel_litres) > 0;
+  const km = num(trip.odometer_end) > num(trip.odometer_start);
+  if (!fuel && !km) return null;
+  return `แถวนี้มี${fuel && km ? 'น้ำมันและไมล์' : fuel ? 'น้ำมัน' : 'ไมล์'}แต่ไม่มีต้นทาง-ปลายทาง — ถ้าเป็นของเที่ยววิ่ง ให้ใส่ต้นทาง-ปลายทาง หรือลงไว้ที่แถวเที่ยวนั้น (ถ้าเป็นวิ่งเปล่า/เติมน้ำมันอย่างเดียว บันทึกต่อได้)`;
+}
+
+/** W2 (กล่องตรวจก่อนบันทึก): เที่ยวไมล์ 0 แต่ไมล์ต้นตรงกับไมล์ต้นของแถว '-' ที่มีน้ำมันและมีระยะ ของรถคันเดียวกันภายใน ±3 วัน
+ *  → ไมล์/น้ำมันของเที่ยวนี้น่าจะไปลงที่แถว '-' (เช่น 30 ส.ค. 2026 พิษณุโลก→ลำพูน กับแถว '-' 31 ส.ค.) */
+export function zeroKmFuelElsewhereWarnings(trip: CheckTrip, others: CheckTrip[]): string[] {
+  const start = num(trip.odometer_start), end = num(trip.odometer_end);
+  if (!isRealTrip(trip) || !trip.date || start <= 0 || (end !== 0 && end !== start)) return [];
+  const d = dayNo(trip.date);
+  return others
+    .filter(o => o.id !== trip.id && !isRealTrip(o) && !!o.date && Math.abs(dayNo(o.date) - d) <= 3 && sameVehicle(trip, o)
+      && num(o.fuel_cost) > 0 && num(o.odometer_start) === start && num(o.odometer_end) > start)
+    .map(o => `เที่ยวนี้ไมล์ 0 แต่ไมล์ต้น ${start.toLocaleString()} ตรงกับแถว '-' วันที่ ${o.date} (ไมล์ ${num(o.odometer_start).toLocaleString()}–${num(o.odometer_end).toLocaleString()} น้ำมัน ${num(o.fuel_cost).toLocaleString()} บาท) — ถ้าไมล์/น้ำมันแถวนั้นเป็นของเที่ยวนี้ ให้ย้ายมาลงที่เที่ยวนี้`);
 }

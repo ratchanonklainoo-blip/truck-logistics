@@ -14,7 +14,7 @@ import { COMMISSION_RATE } from '@/lib/constants';
 import { todayBangkok } from '@/lib/dateTh';
 import { createClient } from '@/lib/supabase/client';
 import { fetchAllRows } from '@/lib/fetchAll';
-import { findDuplicateTrips, odometerWarnings, payMismatch, type CheckTrip } from '@/lib/tripChecks';
+import { findDuplicateTrips, odometerWarnings, payMismatch, missingRouteWarning, zeroKmFuelElsewhereWarnings, type CheckTrip } from '@/lib/tripChecks';
 
 // ── Zod schema ──────────────────────────────────────────────
 const tripSchema = z.object({
@@ -269,7 +269,7 @@ export default function TripForm({
     // 2) เที่ยวซ้ำ (±1 วัน รถ/ทะเบียนเดียวกัน เส้นทางเดียวกัน) + เลขไมล์ซ้ำ/ถอยหลัง — ค้นย้อนหลัง 60 วันถึง +1 วัน
     setCheckError('');
     const { data: rows, error } = await fetchAllRows<ExistingTrip>((a, b) => supabase.from('trips')
-      .select('id,date,driver_id,origin,destination,plate,odometer_start,odometer_end,transport_price,trip_pay,withdraw,created_at,'
+      .select('id,date,driver_id,origin,destination,plate,odometer_start,odometer_end,fuel_cost,fuel_litres,transport_price,trip_pay,withdraw,created_at,'
         + 'drivers!trips_driver_id_fkey(nickname,license_plate)')
       .is('deleted_at', null)
       .gte('date', shiftDate(fd.date, -60)).lte('date', shiftDate(fd.date, 1))
@@ -280,7 +280,7 @@ export default function TripForm({
     }
     const others = rows.map(r => ({ ...r, driver_plate: r.drivers?.license_plate || '' }));
     const dups = findDuplicateTrips(me, others);
-    const odo = odometerWarnings(me, others);
+    const odo = [...odometerWarnings(me, others), ...zeroKmFuelElsewhereWarnings(me, others)];
     if (dups.length > 0 || odo.length > 0) {
       setPreSave({ data: fd, dups, odo });
       return;
@@ -296,6 +296,11 @@ export default function TripForm({
     setSavingPre(true);
     try { await onSave(d, editingTrip?.id); } finally { setSavingPre(false); }
   };
+  // W1: เตือนขณะกรอก (ไม่บล็อก) — แถวมีน้ำมัน/ไมล์ แต่ไม่มีต้นทาง-ปลายทาง
+  const routeWarnNow = missingRouteWarning({
+    date: '', driver_id: '', origin: watch('origin'), destination: watch('destination'),
+    odometer_start: odomStart, odometer_end: odomEnd, fuel_cost: watch('fuel_cost'), fuel_litres: watch('fuel_litres'),
+  });
   const mismatchNow = payMismatch({
     date: '', driver_id: '', origin: watch('origin'), destination: watch('destination'),
     transport_price: watch('transport_price'), trip_pay: watchedTripPay as number,
@@ -515,6 +520,11 @@ export default function TripForm({
             </div>
           </div>
         </div>
+        {routeWarnNow && (
+          <p role="status" className="-mt-2 flex items-start gap-1.5 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />{routeWarnNow}
+          </p>
+        )}
 
         {/* รายการอื่นๆ */}
         <div className="grid grid-cols-2 gap-3">
