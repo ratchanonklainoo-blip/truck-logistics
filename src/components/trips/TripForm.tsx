@@ -672,7 +672,7 @@ export default function TripForm({
                           <td className="px-2 py-1.5">
                             <button type="button" autoFocus={i === 0}
                               onClick={() => { setPreSave(null); onEditExisting(t.id); }}
-                              className="bg-blue-600 hover:bg-blue-700 text-white rounded-md px-2 py-1 whitespace-nowrap">
+                              className="min-h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-md px-2 py-1 whitespace-nowrap">
                               แก้แถวเดิม
                             </button>
                           </td>
@@ -690,12 +690,12 @@ export default function TripForm({
               </ul>
             )}
             <div className="flex flex-wrap gap-2 justify-end pt-2 border-t border-slate-100">
-              <button type="button" onClick={() => setPreSave(null)} className="btn-secondary text-sm"
+              <button type="button" onClick={() => setPreSave(null)} className="btn-secondary text-sm min-h-11"
                 autoFocus={preSave.dups.length === 0}>
                 กลับไปแก้
               </button>
               <button type="button" onClick={confirmPreSave}
-                className="text-sm px-3 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50">
+                className="min-h-11 text-sm px-3 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50">
                 {preSave.dups.length > 0 ? 'บันทึกเป็นเที่ยวใหม่' : 'บันทึกต่อ'}
               </button>
             </div>
