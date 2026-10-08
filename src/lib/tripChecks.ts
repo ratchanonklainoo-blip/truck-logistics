@@ -92,14 +92,19 @@ export function missingRouteWarning(trip: CheckTrip): string | null {
   return `แถวนี้มี${fuel && km ? 'น้ำมันและไมล์' : fuel ? 'น้ำมัน' : 'ไมล์'}แต่ไม่มีต้นทาง-ปลายทาง — ถ้าเป็นของเที่ยววิ่ง ให้ใส่ต้นทาง-ปลายทาง หรือลงไว้ที่แถวเที่ยวนั้น (ถ้าเป็นวิ่งเปล่า/เติมน้ำมันอย่างเดียว บันทึกต่อได้)`;
 }
 
-/** W2 (กล่องตรวจก่อนบันทึก): เที่ยวไมล์ 0 แต่ไมล์ต้นตรงกับไมล์ต้นของแถว '-' ที่มีน้ำมันและมีระยะ ของรถคันเดียวกันภายใน ±3 วัน
+/** W2 ดูแถว '-' ห่างจากเที่ยวไม่เกินกี่วัน (ทั้งก่อนและหลัง) */
+export const W2_DAYS = 3;
+/** ช่วงวันที่ TripForm ดึงเที่ยวมาตรวจก่อนบันทึก (ย้อนหลัง/ล่วงหน้า) — ล่วงหน้าต้อง ≥ W2_DAYS ไม่งั้นแถว '-' หลังเที่ยวไม่ถูกดึงมาตรวจ */
+export const CHECK_WINDOW = { back: 60, ahead: W2_DAYS };
+
+/** W2 (กล่องตรวจก่อนบันทึก): เที่ยวไมล์ 0 แต่ไมล์ต้นตรงกับไมล์ต้นของแถว '-' ที่มีน้ำมันและมีระยะ ของรถคันเดียวกันภายใน ±W2_DAYS วัน
  *  → ไมล์/น้ำมันของเที่ยวนี้น่าจะไปลงที่แถว '-' (เช่น 30 ส.ค. 2026 พิษณุโลก→ลำพูน กับแถว '-' 31 ส.ค.) */
 export function zeroKmFuelElsewhereWarnings(trip: CheckTrip, others: CheckTrip[]): string[] {
   const start = num(trip.odometer_start), end = num(trip.odometer_end);
   if (!isRealTrip(trip) || !trip.date || start <= 0 || (end !== 0 && end !== start)) return [];
   const d = dayNo(trip.date);
   return others
-    .filter(o => o.id !== trip.id && !isRealTrip(o) && !!o.date && Math.abs(dayNo(o.date) - d) <= 3 && sameVehicle(trip, o)
+    .filter(o => o.id !== trip.id && !isRealTrip(o) && !!o.date && Math.abs(dayNo(o.date) - d) <= W2_DAYS && sameVehicle(trip, o)
       && num(o.fuel_cost) > 0 && num(o.odometer_start) === start && num(o.odometer_end) > start)
     .map(o => `เที่ยวนี้ไมล์ 0 แต่ไมล์ต้น ${start.toLocaleString()} ตรงกับแถว '-' วันที่ ${o.date} (ไมล์ ${num(o.odometer_start).toLocaleString()}–${num(o.odometer_end).toLocaleString()} น้ำมัน ${num(o.fuel_cost).toLocaleString()} บาท) — ถ้าไมล์/น้ำมันแถวนั้นเป็นของเที่ยวนี้ ให้ย้ายมาลงที่เที่ยวนี้`);
 }

@@ -14,7 +14,7 @@ import { COMMISSION_RATE } from '@/lib/constants';
 import { todayBangkok } from '@/lib/dateTh';
 import { createClient } from '@/lib/supabase/client';
 import { fetchAllRows } from '@/lib/fetchAll';
-import { findDuplicateTrips, odometerWarnings, payMismatch, missingRouteWarning, zeroKmFuelElsewhereWarnings, type CheckTrip } from '@/lib/tripChecks';
+import { findDuplicateTrips, odometerWarnings, payMismatch, missingRouteWarning, zeroKmFuelElsewhereWarnings, CHECK_WINDOW, type CheckTrip } from '@/lib/tripChecks';
 
 // ── Zod schema ──────────────────────────────────────────────
 const tripSchema = z.object({
@@ -266,13 +266,13 @@ export default function TripForm({
     }
     setMismatchError('');
 
-    // 2) เที่ยวซ้ำ (±1 วัน รถ/ทะเบียนเดียวกัน เส้นทางเดียวกัน) + เลขไมล์ซ้ำ/ถอยหลัง — ค้นย้อนหลัง 60 วันถึง +1 วัน
+    // 2) เที่ยวซ้ำ (±1 วัน รถ/ทะเบียนเดียวกัน เส้นทางเดียวกัน) + เลขไมล์ซ้ำ/ถอยหลัง + W2 (แถว '-' ±3 วัน) — ค้นย้อนหลัง 60 วันถึง +3 วัน (CHECK_WINDOW)
     setCheckError('');
     const { data: rows, error } = await fetchAllRows<ExistingTrip>((a, b) => supabase.from('trips')
       .select('id,date,driver_id,origin,destination,plate,odometer_start,odometer_end,fuel_cost,fuel_litres,transport_price,trip_pay,withdraw,created_at,'
         + 'drivers!trips_driver_id_fkey(nickname,license_plate)')
       .is('deleted_at', null)
-      .gte('date', shiftDate(fd.date, -60)).lte('date', shiftDate(fd.date, 1))
+      .gte('date', shiftDate(fd.date, -CHECK_WINDOW.back)).lte('date', shiftDate(fd.date, CHECK_WINDOW.ahead))
       .order('id').range(a, b) as never);
     if (error) {
       setCheckError(`ตรวจเที่ยวซ้ำไม่สำเร็จ (${error.message}) — ตรวจสัญญาณแล้วกดบันทึกอีกครั้ง`);

@@ -12,7 +12,7 @@ import {
 } from '../src/lib/payrollCalc.ts';
 import { buildMonthlyReport } from '../src/lib/monthlyReport.ts';
 import { calculateTotals } from '../src/lib/utils.ts';
-import { findDuplicateTrips, odometerWarnings, payMismatch, missingRouteWarning, zeroKmFuelElsewhereWarnings, type CheckTrip } from '../src/lib/tripChecks.ts';
+import { findDuplicateTrips, odometerWarnings, payMismatch, missingRouteWarning, zeroKmFuelElsewhereWarnings, CHECK_WINDOW, W2_DAYS, type CheckTrip } from '../src/lib/tripChecks.ts';
 
 let pass = 0, fail = 0;
 function eq(name: string, got: unknown, want: unknown) {
@@ -191,6 +191,9 @@ eq('ทะเบียนรายงาน: plate ส่วนใหญ่ข�
     zeroKmFuelElsewhereWarnings(t30, [{ ...d31, origin: 'ลำพูน', destination: 'เชียงราย' }]),
   ].map(w => w.length), [0, 0, 0, 0, 0, 0]);
   eq('W2 ภายใน 3 วัน (ย้อนหลัง) เตือน', zeroKmFuelElsewhereWarnings(t30, [{ ...d31, date: '2026-08-27' }]).length, 1);
+  eq('W2 แถว - หลังเที่ยว +3 วัน เตือน / +4 วัน ไม่เตือน', [
+    zeroKmFuelElsewhereWarnings(t30, [{ ...d31, date: '2026-09-02' }]).length, zeroKmFuelElsewhereWarnings(t30, [{ ...d31, date: '2026-09-03' }]).length], [1, 0]);
+  eq('W2 ช่วงที่ฟอร์มดึงมาตรวจ (CHECK_WINDOW) ครอบคลุม ±W2_DAYS', CHECK_WINDOW.ahead >= W2_DAYS && CHECK_WINDOW.back >= W2_DAYS, true);
   eq('#20 ค่าขนส่ง 0 ค่าเที่ยว > 0 / กลับกัน / ปกติ / แถว -→-', [
     payMismatch({ ...base, transport_price: 0, trip_pay: 700 }), payMismatch({ ...base, transport_price: 7000, trip_pay: 0 }),
     payMismatch({ ...base, transport_price: 7000, trip_pay: 700 }), payMismatch({ ...base, origin: '-', destination: '-', trip_pay: 700 }),
@@ -317,13 +320,13 @@ if (process.argv.includes('--live')) {
       + `${stored ? ` (ใบที่บันทึก [${stored.status}] ฐาน ${stored.base_salary} สุทธิ ${stored.net_pay})` : ' (ไม่มีใบ)'}`
       + ` | dashboard ${now.net_profit}→${set.net_profit} | รายงาน ${now.net_after_fixed}→${set.net_after_fixed}`);
   }
-  // #20 เลขไมล์ซ้ำ (A′) กับข้อมูลจริงทุกแถว: เทียบแบบเดียวกับ TripForm (ย้อน 60 วัน ถึง +1 วัน) + เที่ยวซ้ำจำลอง (ในหน่วยความจำ ไม่เขียน DB)
+  // #20 เลขไมล์ซ้ำ (A′) กับข้อมูลจริงทุกแถว: เทียบแบบเดียวกับ TripForm (CHECK_WINDOW ย้อน 60 วัน ถึง +3 วัน) + เที่ยวซ้ำจำลอง (ในหน่วยความจำ ไม่เขียน DB)
   const odoRows = sqlJson<CheckTrip[]>(`select json_agg(json_build_object('id', t.id, 'date', t.date, 'driver_id', t.driver_id,
       'origin', t.origin, 'destination', t.destination, 'plate', t.plate, 'odometer_start', t.odometer_start, 'odometer_end', t.odometer_end,
       'fuel_cost', t.fuel_cost, 'fuel_litres', t.fuel_litres, 'created_at', t.created_at, 'driver_plate', d.license_plate))::text j
     from trips t left join drivers d on d.id = t.driver_id where t.deleted_at is null`);
   const dayOf = (s: string) => Date.parse(`${s.slice(0, 10)}T00:00:00Z`) / 86400000;
-  const formWindow = (t: CheckTrip, rows: CheckTrip[]) => rows.filter(o => dayOf(o.date) >= dayOf(t.date) - 60 && dayOf(o.date) <= dayOf(t.date) + 1);
+  const formWindow = (t: CheckTrip, rows: CheckTrip[]) => rows.filter(o => dayOf(o.date) >= dayOf(t.date) - CHECK_WINDOW.back && dayOf(o.date) <= dayOf(t.date) + CHECK_WINDOW.ahead);
   const isDupOdo = (t: CheckTrip, rows: CheckTrip[]) => odometerWarnings(t, formWindow(t, rows)).some(w => w.startsWith('เลขไมล์ซ้ำ'));
   const flagged = odoRows.filter(t => isDupOdo(t, odoRows)).length;
   console.log(`live #20 เลขไมล์ซ้ำ: ${odoRows.length} แถว เตือน ${flagged} แถว (ก่อนแก้ 363 แถว)`);
