@@ -4,7 +4,7 @@
 // ไม่มีการแก้ข้อมูลในหน้านี้ ; แก้เที่ยวที่หน้าเที่ยววิ่งเดิม
 import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, RefreshCw, Image as ImageIcon, X, ExternalLink } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RefreshCw, Image as ImageIcon, X, ExternalLink, ArrowDown } from 'lucide-react';
 import { formatCurrency, formatNumber, formatThaiDate, adToBE } from '@/lib/utils';
 import { THAI_MONTHS } from '@/lib/constants';
 import { todayBangkok } from '@/lib/dateTh';
@@ -31,7 +31,7 @@ function Card({ label, value, sub, tone = 'text-slate-800' }: { label: string; v
     <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm">
       <div className="text-xs text-slate-500">{label}</div>
       <div className={`text-lg font-bold mt-0.5 ${tone}`}>{value}</div>
-      {sub && <div className="text-[11px] text-slate-400 mt-0.5">{sub}</div>}
+      {sub && <div className="text-xs text-slate-500 mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -45,8 +45,8 @@ const COLOR_BORDER: Record<ProfitColor, string> = { green: 'border-l-emerald-500
 
 // ใช้ทั้งตาราง (จอใหญ่) และการ์ด (จอ ≤ 640px)
 function FuelCell({ t }: { t: TPTrip }) {
-  if (t.fuel_mode === 'no_data') return <span className="text-xs text-slate-400">ไม่มีข้อมูลน้ำมัน/ระยะทาง</span>;
-  if (t.group_host) return <>{baht(t.fuel)}<div className="text-[10px] text-slate-400">น้ำมันอยู่ที่รอบ {t.group_host}</div></>;
+  if (t.fuel_mode === 'no_data') return <span className="text-xs text-slate-600">ไม่มีข้อมูลน้ำมัน/ระยะทาง</span>;
+  if (t.group_host) return <>{baht(t.fuel)}<div className="text-xs text-slate-600">น้ำมันอยู่ที่รอบ {t.group_host}</div></>;
   return <>{baht(t.fuel)}{t.fuel_mode === 'estimate' && <div className="text-xs font-semibold text-amber-600">ประมาณการ</div>}</>;
 }
 
@@ -69,7 +69,7 @@ function DayNotes({ d }: { d: TPDay }) {
         </div>
       ))}
       {d.trip_count === 0 && d.fuel_own !== 0 && !d.hints.length && <div className="text-amber-700">ไม่มีเที่ยว — น้ำมันเป็นต้นทุนของวันนี้</div>}
-      {d.fuel_estimated > 0 && <div className="text-slate-400">รายเที่ยวใช้น้ำมันประมาณการ {baht(d.fuel_estimated)}{d.est_rate ? ` (${baht(d.est_rate)} บ./กม.)` : ''} ไม่นับในต้นทุนวัน</div>}
+      {d.fuel_estimated > 0 && <div className="text-slate-600">รายเที่ยวใช้น้ำมันประมาณการ {baht(d.fuel_estimated)}{d.est_rate ? ` (${baht(d.est_rate)} บ./กม.)` : ''} ไม่นับในต้นทุนวัน</div>}
       {d.off_trip.rows > 0 && <div className="text-slate-500">
         นอกเที่ยว {d.off_trip.rows} แถว{d.off_trip.km ? ` · วิ่งเปล่า ${formatNumber(d.off_trip.km)} กม.` : ''}
         {d.off_trip.other ? ` · ค่าใช้จ่ายอื่น ${baht(d.off_trip.other)}` : ''}
@@ -82,7 +82,7 @@ function DayNotes({ d }: { d: TPDay }) {
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
-      <div className="text-[11px] text-slate-500">{label}</div>
+      <div className="text-xs text-slate-600">{label}</div>
       <div className="text-sm text-slate-800 break-words">{children}</div>
     </div>
   );
@@ -110,7 +110,7 @@ function TripCard({ t, margin, onPreview }: { t: TPTrip; margin: string; onPrevi
         <Field label="ค่าน้ำมันจัดสรร"><FuelCell t={t} /></Field>
         <Field label="ค่าเที่ยว">{baht(t.pay)}</Field>
         <Field label="ต้นทุนรวม">{baht(t.cost)}</Field>
-        <Field label="ระยะทาง (กม.)"><span className={t.km ? '' : 'text-xs text-slate-400'}>{kmLabel(t)}</span></Field>
+        <Field label="ระยะทาง (กม.)"><span className={t.km ? '' : 'text-xs text-slate-600'}>{kmLabel(t)}</span></Field>
         <Field label={`ต้นทุน/กม.${t.group_size > 1 ? ' (ทั้งกลุ่ม)' : ''}`}>{t.cost_per_km == null ? '-' : baht(t.cost_per_km)}</Field>
         <Field label="กำไร/กม.">{t.profit_per_km == null ? '-' : baht(t.profit_per_km)}</Field>
         <Field label={`ขั้นต่ำควรรับ (${margin}%)`}>
@@ -138,14 +138,14 @@ function DayCard({ d }: { d: TPDay }) {
           <div className="text-xs text-slate-500 break-words">{d.plate_label} · {d.drivers.join(', ')}</div>
         </div>
         <div className="text-right shrink-0">
-          <div className="text-[11px] text-slate-500">กำไรวัน</div>
+          <div className="text-xs text-slate-600">กำไรวัน</div>
           <div className={`text-base font-bold ${COLOR_TEXT[c]}`}>{baht(d.profit)}</div>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-2 mt-2">
         <Field label="เที่ยว">{d.trip_count || '-'}</Field>
         <Field label="กม.วิ่งจริง">{d.km ? formatNumber(d.km) : '-'}</Field>
-        <Field label="น้ำมันที่เติม">{d.fuel_own ? <>{baht(d.fuel_own)}{d.fills > 1 && <span className="text-xs text-slate-400"> (เติม {d.fills} ครั้ง)</span>}</> : '-'}</Field>
+        <Field label="น้ำมันที่เติม">{d.fuel_own ? <>{baht(d.fuel_own)}{d.fills > 1 && <span className="text-xs text-slate-600"> (เติม {d.fills} ครั้ง)</span>}</> : '-'}</Field>
         <Field label="ค่าเที่ยว">{d.pay ? baht(d.pay) : '-'}</Field>
         <Field label="ต้นทุนวัน">{baht(d.cost)}</Field>
         <Field label="รายได้">{d.revenue ? baht(d.revenue) : '-'}</Field>
@@ -268,9 +268,16 @@ export default function TripProfitPage() {
           <h1 className="text-2xl font-bold text-slate-800">กำไรรายเที่ยว</h1>
           <p className="text-sm text-slate-500 mt-0.5">ต้นทุนเที่ยว = ค่าน้ำมันที่จัดสรรตามระยะทาง + ค่าเที่ยว · อ่านอย่างเดียว</p>
         </div>
-        <button onClick={() => setReloadKey(k => k + 1)} className="flex items-center gap-2 px-3 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">
-          <RefreshCw className="w-4 h-4" />รีโหลด
-        </button>
+        <div className="flex items-center gap-2">
+          {!loading && data && (
+            <a href="#trip-list" className="flex items-center gap-1 px-3 py-2 text-sm text-blue-700 border border-blue-200 bg-blue-50 rounded-lg hover:bg-blue-100">
+              ไปที่รายเที่ยว <ArrowDown className="w-4 h-4" />
+            </a>
+          )}
+          <button onClick={() => setReloadKey(k => k + 1)} className="flex items-center gap-2 px-3 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">
+            <RefreshCw className="w-4 h-4" />รีโหลด
+          </button>
+        </div>
       </div>
 
       {/* ── เดือน + ตัวกรอง ── */}
@@ -339,7 +346,7 @@ export default function TripProfitPage() {
           </div>
 
           {/* ── ตารางรายเที่ยว ── */}
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+          <div id="trip-list" className="scroll-mt-4 bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
               <span className="font-semibold text-slate-700 text-sm">รายเที่ยว ({trips.length})</span>
               <span className="text-xs text-slate-500">
@@ -515,7 +522,35 @@ export default function TripProfitPage() {
               <span className="font-semibold text-slate-700 text-sm">ค่าใช้จ่ายอื่นของเดือน ({others.length} รายการ)</span>
               <span className="text-xs text-slate-500">ค่าใช้จ่ายของบริษัททั้งเดือน ไม่นำไปคิดเป็นต้นทุนของเที่ยวใด</span>
             </div>
-            <div className="overflow-x-auto">
+            {/* จอ ≤ 640px: การ์ด */}
+            <div className="[@media(min-width:641px)]:hidden">
+              {others.length === 0 && (
+                <div className="text-center py-8 text-slate-500 text-sm">
+                  {fProduct || fRoute.trim() ? 'ไม่แสดงเมื่อกรองสินค้า/เส้นทาง' : 'ไม่มีค่าใช้จ่ายอื่นในเดือน/ตัวกรองนี้'}
+                </div>
+              )}
+              {others.map(o => (
+                <div key={o.id} className="px-3 py-3 border-b border-slate-100">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-slate-800 break-words">{o.item || '-'}</div>
+                      <div className="text-xs text-slate-600 break-words">{formatThaiDate(o.date, true)} · {o.plate_label} · {o.driver_name}</div>
+                    </div>
+                    <div className="text-base font-bold text-slate-800 shrink-0">{baht(o.amount)}</div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2 mt-2">
+                    <Field label="หมายเหตุ">{o.remarks || '-'}</Field>
+                    <Field label="เที่ยว">{o.route || 'ไม่ใช่เที่ยว (ซ่อม/วิ่งเปล่า)'}</Field>
+                  </div>
+                </div>
+              ))}
+              {others.length > 0 && (
+                <div className="px-3 py-3 bg-slate-100 flex justify-between gap-3 font-semibold text-slate-700 text-sm">
+                  <span>รวมค่าใช้จ่ายอื่นของเดือน</span><span>{baht(totals.other_expenses)}</span>
+                </div>
+              )}
+            </div>
+            <div className="hidden [@media(min-width:641px)]:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-[#1E3A5F] text-white text-xs">
