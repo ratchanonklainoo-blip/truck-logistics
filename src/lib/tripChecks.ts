@@ -108,3 +108,12 @@ export function zeroKmFuelElsewhereWarnings(trip: CheckTrip, others: CheckTrip[]
       && num(o.fuel_cost) > 0 && num(o.odometer_start) === start && num(o.odometer_end) > start)
     .map(o => `เที่ยวนี้ไมล์ 0 แต่ไมล์ต้น ${start.toLocaleString()} ตรงกับแถว '-' วันที่ ${o.date} (ไมล์ ${num(o.odometer_start).toLocaleString()}–${num(o.odometer_end).toLocaleString()} น้ำมัน ${num(o.fuel_cost).toLocaleString()} บาท) — ถ้าไมล์/น้ำมันแถวนั้นเป็นของเที่ยวนี้ ให้ย้ายมาลงที่เที่ยวนี้`);
 }
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** วันที่ขึ้น/ลงของ (migration 024): ว่างได้ทั้งคู่ ; ถ้ามีทั้งสองค่า วันที่ลงต้องไม่ก่อนวันที่ขึ้น (ตรงกับ CHECK trips_unload_not_before_load) */
+export function loadUnloadError(load?: string | null, unload?: string | null): string | null {
+  const l = (load ?? '').trim(), u = (unload ?? '').trim();
+  if ((l && !ISO_DATE.test(l)) || (u && !ISO_DATE.test(u))) return 'รูปแบบวันที่ไม่ถูกต้อง';
+  if (l && u && u < l) return 'วันที่ลงต้องไม่ก่อนวันที่ขึ้น';
+  return null;
+}

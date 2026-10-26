@@ -68,6 +68,12 @@ export default function TripTable({ trips, totals, loading, onEdit, onDelete }: 
                 <tr key={trip.id} className="group">
                   <td className="font-medium text-slate-900 whitespace-nowrap">
                     {formatThaiDate(trip.date, true)}
+                    {(trip.load_date || trip.unload_date) && (
+                      <div className="text-[11px] font-normal text-slate-600 leading-tight mt-0.5">
+                        {trip.load_date && <div>ขึ้น {formatThaiDate(trip.load_date, true)}</div>}
+                        {trip.unload_date && <div>ลง {formatThaiDate(trip.unload_date, true)}</div>}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <div className="font-medium text-slate-800">{trip.product || '-'}</div>

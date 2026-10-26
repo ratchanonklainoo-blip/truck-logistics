@@ -19,7 +19,7 @@ import {
 import {
   calculateTotals, calcNetPay, calcFuelEfficiency,
   getCurrentMonthFilter, getThaiMonthLabel,
-  formatCurrency, formatNumber, escapeCsvField,
+  formatCurrency, formatNumber, escapeCsvField, formatThaiDate,
 } from '@/lib/utils';
 import { todayBangkok, nextMonthStart } from '@/lib/dateTh';
 import { fetchAllRows } from '@/lib/fetchAll';
@@ -170,6 +170,64 @@ export default function TripsPage() {
 
   const driverTotals = useMemo(() => calculateTotals(currentDriverTrips), [currentDriverTrips]);
 
+  // ── ตัวกรองช่วงวันที่ขึ้น/ลงของ (ค้นย้อนหลังข้ามเดือน ของคนขับที่เลือก) ──────────
+  // มีผลกับตารางรายการ + Export เท่านั้น ; การ์ดสรุป/KPI ยังเป็นของเดือนที่เลือกด้านบนเหมือนเดิม
+  type RangeField = 'load_date' | 'unload_date';
+  type DateRange  = { field: RangeField; from: string; to: string };
+  const RANGE_LABEL: Record<RangeField, string> = { load_date: 'วันที่ขึ้นของ', unload_date: 'วันที่ลงของ' };
+  const [rangeDraft,  setRangeDraft]  = useState<DateRange>({ field: 'load_date', from: '', to: '' });
+  const [rangeApplied, setRangeApplied] = useState<DateRange | null>(null);
+  const [rangeError,  setRangeError]  = useState('');
+  const [rangeTrips,  setRangeTrips]  = useState<Trip[]>([]);
+  const [rangeLoading, setRangeLoading] = useState(false);
+
+  const applyRange = () => {
+    const { from, to } = rangeDraft;
+    if (!from && !to) { setRangeError('เลือกวันที่เริ่มหรือวันที่สิ้นสุดอย่างน้อยหนึ่งช่อง'); return; }
+    if (from && to && to < from) { setRangeError('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม'); return; }
+    setRangeError('');
+    setRangeApplied({ ...rangeDraft });
+  };
+  const clearRange = () => {
+    setRangeApplied(null); setRangeError(''); setRangeTrips([]);
+    setRangeDraft(d => ({ ...d, from: '', to: '' }));
+  };
+
+  useEffect(() => {
+    if (!rangeApplied || !selectedDriverId) return;
+    let cancelled = false;
+    const { field, from, to } = rangeApplied;
+    const fetchRange = async () => {
+      setRangeLoading(true);
+      const res = await fetchAllRows<Trip>((a, b) => {
+        let q = supabase.from('trips').select('*')
+          .is('deleted_at', null).eq('driver_id', selectedDriverId);
+        if (from) q = q.gte(field, from);
+        if (to)   q = q.lte(field, to);
+        return q.order(field, { ascending: true }).order('date', { ascending: true })
+          .order('created_at', { ascending: true }).order('id').range(a, b);
+      });
+      if (cancelled) return;
+      setRangeError(res.error ? `โหลดเที่ยวตามช่วง${RANGE_LABEL[field]}ไม่สำเร็จ: ${friendlySaveError(res.error)} — ลองกดค้นหาอีกครั้ง` : '');
+      if (!res.error) setRangeTrips(res.data);
+      setRangeLoading(false);
+    };
+    fetchRange();
+    // realtime: ไม่รู้ว่าแถวที่เปลี่ยนอยู่ในช่วงไหม (UPDATE อาจย้ายเข้า/ออก) จึงโหลดช่วงนี้ใหม่ทุกครั้งที่ trips เปลี่ยน
+    const channel = supabase
+      .channel(`trips-range-${field}-${from}-${to}-${selectedDriverId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => { fetchRange(); })
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(channel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rangeApplied, selectedDriverId]);
+
+  const tableTrips   = rangeApplied ? rangeTrips : currentDriverTrips;
+  const tableTotals  = useMemo(() => (rangeApplied ? calculateTotals(rangeTrips) : driverTotals), [rangeApplied, rangeTrips, driverTotals]);
+  const rangeText = rangeApplied
+    ? `${RANGE_LABEL[rangeApplied.field]} ${rangeApplied.from ? formatThaiDate(rangeApplied.from, true) : 'ต้นสุด'} – ${rangeApplied.to ? formatThaiDate(rangeApplied.to, true) : 'ล่าสุด'}`
+    : '';
+
   // รายการคนขับในฟอร์ม: เฉพาะที่ใช้งาน (+ คนขับของเที่ยวที่กำลังแก้ ถ้าปิดใช้งานแล้ว)
   const activeDrivers = useMemo(() => drivers.filter(d => d.is_active !== false), [drivers]);
   const formDrivers = useMemo(() => {
@@ -218,6 +276,8 @@ export default function TripsPage() {
       other_cost:      Number(formData.other_cost)      || 0,
       withdraw:        Number(formData.withdraw)        || 0,
       plate:           (formData.plate ?? '').trim() || null, // ทะเบียนต่อเที่ยว ว่าง = null (ใช้ทะเบียนคนขับ)
+      load_date:       (formData.load_date ?? '').trim() || null,   // วันที่ขึ้นของ ว่าง = null
+      unload_date:     (formData.unload_date ?? '').trim() || null, // วันที่ลงของ ว่าง = null
       created_by:      user?.id,
     };
 
@@ -293,8 +353,10 @@ export default function TripsPage() {
   const handleExportCSV = () => {
     const headers = ['วันที่','คนขับ','สินค้า','น้ำหนัก','ต้นทาง','ปลายทาง',
                      'ไมล์ต้น','ไมล์ปลาย','ระยะ(กม.)','ค่าน้ำมัน','ลิตร',
-                     'ค่าขนส่ง','ค่าเที่ยว','เบิก','รายการอื่นๆ','ค่าอื่นๆ','หมายเหตุ','ทะเบียน'];
-    const rows = currentDriverTrips.map(t => [
+                     'ค่าขนส่ง','ค่าเที่ยว','เบิก','รายการอื่นๆ','ค่าอื่นๆ','หมายเหตุ','ทะเบียน',
+                     'วันที่ขึ้นของ','วันที่ลงของ'];
+    // ส่งออกตามที่ตารางแสดง: เดือนที่เลือก หรือช่วงวันที่ขึ้น/ลงที่กรองอยู่
+    const rows = tableTrips.map(t => [
       t.date, selectedDriver?.name || '',
       escapeCsvField(t.product), escapeCsvField(t.weight),
       escapeCsvField(t.origin), escapeCsvField(t.destination),
@@ -303,11 +365,14 @@ export default function TripsPage() {
       t.withdraw, escapeCsvField(t.other_item), t.other_cost, escapeCsvField(t.remarks),
       // คอลัมน์ท้ายสุด (นำเข้า CSV อ่านถึงคอลัมน์หมายเหตุ ไม่กระทบ): trips.plate ถ้ามี ไม่มีใช้ทะเบียนคนขับ
       escapeCsvField(t.plate || selectedDriver?.license_plate || ''),
+      t.load_date || '', t.unload_date || '', // คอลัมน์ท้าย (migration 024) นำเข้า CSV ไม่อ่าน
     ]);
     const csv = ['﻿' + headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-    a.download = `รายการ_${selectedDriver?.nickname}_${getThaiMonthLabel(monthFilter)}.csv`;
+    a.download = rangeApplied
+      ? `รายการ_${selectedDriver?.nickname}_${rangeApplied.field === 'load_date' ? 'ขึ้น' : 'ลง'}_${rangeApplied.from || 'ต้นสุด'}_${rangeApplied.to || 'ล่าสุด'}.csv`
+      : `รายการ_${selectedDriver?.nickname}_${getThaiMonthLabel(monthFilter)}.csv`;
     a.click();
   };
 
@@ -757,18 +822,61 @@ export default function TripsPage() {
 
         <div className="lg:col-span-2">
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between gap-2">
               <h3 className="font-semibold text-slate-800">
-                รายการ: {selectedDriver?.name} — {monthLabel}
+                รายการ: {selectedDriver?.name} — {rangeApplied ? rangeText : monthLabel}
               </h3>
-              <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-full">
-                {currentDriverTrips.length} รายการ
+              <span className="text-xs text-slate-600 bg-slate-100 px-2 py-1 rounded-full whitespace-nowrap">
+                {tableTrips.length} รายการ
               </span>
             </div>
+
+            {/* ตัวกรองช่วงวันที่ขึ้น/ลงของ — จอ < 640px เรียงลงทีละช่อง ปุ่มสูง 44px */}
+            <div className="px-5 py-3 border-b border-slate-100 space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_1fr_auto] gap-2 sm:items-end">
+                <div>
+                  <label htmlFor="range-field" className="form-label text-xs">ค้นย้อนหลังตาม</label>
+                  <select id="range-field" className="form-input min-h-11" value={rangeDraft.field}
+                    onChange={e => setRangeDraft(d => ({ ...d, field: e.target.value as RangeField }))}>
+                    <option value="load_date">วันที่ขึ้นของ</option>
+                    <option value="unload_date">วันที่ลงของ</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="range-from" className="form-label text-xs">ตั้งแต่</label>
+                  <input id="range-from" type="date" className="form-input min-h-11" value={rangeDraft.from}
+                    onChange={e => setRangeDraft(d => ({ ...d, from: e.target.value }))} />
+                </div>
+                <div>
+                  <label htmlFor="range-to" className="form-label text-xs">ถึง</label>
+                  <input id="range-to" type="date" className="form-input min-h-11" value={rangeDraft.to}
+                    min={rangeDraft.from || undefined}
+                    onChange={e => setRangeDraft(d => ({ ...d, to: e.target.value }))} />
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={applyRange} className="btn-primary text-sm min-h-11 flex-1 sm:flex-none justify-center">
+                    <Filter className="w-4 h-4" /> ค้นหา
+                  </button>
+                  {rangeApplied && (
+                    <button type="button" onClick={clearRange} className="btn-secondary text-sm min-h-11 flex-1 sm:flex-none justify-center">
+                      <X className="w-4 h-4" /> ล้าง
+                    </button>
+                  )}
+                </div>
+              </div>
+              {rangeError && <p role="alert" className="text-red-600 text-xs">{rangeError}</p>}
+              {rangeApplied && !rangeError && (
+                <p className="text-xs text-blue-800 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                  กำลังแสดงตาม{rangeText} (ทุกเดือน ไม่ขึ้นกับเดือนด้านบน) — การ์ดสรุปด้านบนยังเป็นของ{monthLabel} ;
+                  เที่ยวที่ไม่ได้บันทึก{RANGE_LABEL[rangeApplied.field]}จะไม่แสดง
+                </p>
+              )}
+            </div>
+
             <TripTable
-              trips={currentDriverTrips}
-              totals={driverTotals}
-              loading={loading}
+              trips={tableTrips}
+              totals={tableTotals}
+              loading={rangeApplied ? rangeLoading : loading}
               onEdit={handleEdit}
               onDelete={handleDelete}
             />

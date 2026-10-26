@@ -58,6 +58,8 @@ export interface Trip {
   remarks: string;
   receipt_image_url: string | null;
   plate?: string | null; // ทะเบียนรถของเที่ยว (migration 022) ว่าง = ใช้ทะเบียนของคนขับ
+  load_date?: string | null;   // วันที่ขึ้นของ (migration 024) ว่าง = ไม่ได้บันทึก
+  unload_date?: string | null; // วันที่ลงของ (migration 024) ต้องไม่ก่อน load_date
   expense_notes: unknown | null;
   created_by: string | null;
   created_at: string;
@@ -88,6 +90,8 @@ export interface TripFormData {
   remarks: string;
   receipt_image_url?: string | null;
   plate?: string | null;
+  load_date?: string | null;
+  unload_date?: string | null;
 }
 
 export interface TripTotals {

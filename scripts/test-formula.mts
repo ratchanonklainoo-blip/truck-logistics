@@ -12,7 +12,7 @@ import {
 } from '../src/lib/payrollCalc.ts';
 import { buildMonthlyReport } from '../src/lib/monthlyReport.ts';
 import { calculateTotals } from '../src/lib/utils.ts';
-import { findDuplicateTrips, odometerWarnings, payMismatch, missingRouteWarning, zeroKmFuelElsewhereWarnings, CHECK_WINDOW, W2_DAYS, type CheckTrip } from '../src/lib/tripChecks.ts';
+import { findDuplicateTrips, odometerWarnings, payMismatch, missingRouteWarning, zeroKmFuelElsewhereWarnings, loadUnloadError, CHECK_WINDOW, W2_DAYS, type CheckTrip } from '../src/lib/tripChecks.ts';
 
 let pass = 0, fail = 0;
 function eq(name: string, got: unknown, want: unknown) {
@@ -198,6 +198,19 @@ eq('ทะเบียนรายงาน: plate ส่วนใหญ่ข�
     payMismatch({ ...base, transport_price: 0, trip_pay: 700 }), payMismatch({ ...base, transport_price: 7000, trip_pay: 0 }),
     payMismatch({ ...base, transport_price: 7000, trip_pay: 700 }), payMismatch({ ...base, origin: '-', destination: '-', trip_pay: 700 }),
   ], ['no_price', 'no_pay', null, null]);
+}
+
+// วันที่ขึ้น/ลงของ (migration 024): ว่างได้ ; วันลงต้องไม่ก่อนวันขึ้น — ตรงกับ CHECK trips_unload_not_before_load
+{
+  eq('ขึ้น/ลง ว่างทั้งคู่ผ่าน', loadUnloadError('', ''), null);
+  eq('ขึ้น/ลง null ผ่าน (แถวเก่า)', loadUnloadError(null, undefined), null);
+  eq('มีแค่วันขึ้นผ่าน', loadUnloadError('2026-10-01', ''), null);
+  eq('มีแค่วันลงผ่าน', loadUnloadError('', '2026-10-02'), null);
+  eq('ลงวันเดียวกับขึ้นผ่าน', loadUnloadError('2026-10-01', '2026-10-01'), null);
+  eq('ลงหลังขึ้นข้ามเดือนผ่าน', loadUnloadError('2026-09-30', '2026-10-02'), null);
+  eq('ลงก่อนขึ้นไม่ผ่าน', loadUnloadError('2026-10-02', '2026-10-01'), 'วันที่ลงต้องไม่ก่อนวันที่ขึ้น');
+  eq('ลงก่อนขึ้นข้ามปีไม่ผ่าน', loadUnloadError('2027-01-01', '2026-12-31'), 'วันที่ลงต้องไม่ก่อนวันที่ขึ้น');
+  eq('รูปแบบวันที่ผิดไม่ผ่าน', loadUnloadError('1/10/2569', ''), 'รูปแบบวันที่ไม่ถูกต้อง');
 }
 
 console.log('ไม่ทดสอบในสคริปต์นี้ (เป็นหน้าจอ/คิวรี): #8 วันที่เริ่มต้นฟอร์ม, #9–#11 ค่าประจำ (scripts/test-fixed-expenses.mts), #17 snapshot ฐานในใบเงินเดือน, #19 คนขับไม่มีเที่ยว, #20/#21 ส่วนหน้าจอ (กล่องเตือน/ช่องติ๊ก), #23 เกิน 1,000 แถว (scripts/verify-m4-live.mts)');

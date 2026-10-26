@@ -14,7 +14,7 @@ import { COMMISSION_RATE } from '@/lib/constants';
 import { todayBangkok } from '@/lib/dateTh';
 import { createClient } from '@/lib/supabase/client';
 import { fetchAllRows } from '@/lib/fetchAll';
-import { findDuplicateTrips, odometerWarnings, payMismatch, missingRouteWarning, zeroKmFuelElsewhereWarnings, CHECK_WINDOW, type CheckTrip } from '@/lib/tripChecks';
+import { findDuplicateTrips, odometerWarnings, payMismatch, missingRouteWarning, zeroKmFuelElsewhereWarnings, loadUnloadError, CHECK_WINDOW, type CheckTrip } from '@/lib/tripChecks';
 
 // ── Zod schema ──────────────────────────────────────────────
 const tripSchema = z.object({
@@ -42,6 +42,11 @@ const tripSchema = z.object({
   remarks:         z.string().default(''),
   receipt_image_url: z.string().nullable().default(null),
   plate:           z.string().default(''), // ทะเบียนรถของเที่ยว — ว่าง = ใช้ทะเบียนของคนขับ
+  load_date:       z.string().default(''), // วันที่ขึ้นของ — ว่าง = ไม่ได้บันทึก (หน้าเที่ยวบันทึกเป็น null)
+  unload_date:     z.string().default(''), // วันที่ลงของ — ต้องไม่ก่อนวันที่ขึ้น
+}).superRefine((v, ctx) => {
+  const msg = loadUnloadError(v.load_date, v.unload_date);
+  if (msg) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['unload_date'], message: msg });
 });
 
 type TripSchema = z.infer<typeof tripSchema>;
@@ -101,6 +106,8 @@ export default function TripForm({
         remarks:         '',
         receipt_image_url: null,
         plate:           drivers.find(d => d.id === selectedDriverId)?.license_plate || '',
+        load_date:       '',
+        unload_date:     '',
       },
     });
 
@@ -127,6 +134,8 @@ export default function TripForm({
         remarks:         editingTrip.remarks,
         receipt_image_url: editingTrip.receipt_image_url ?? null,
         plate:           editingTrip.plate ?? '', // เที่ยวเก่าไม่มีทะเบียน → เว้นว่าง (ไม่ backfill)
+        load_date:       editingTrip.load_date ?? '',   // เที่ยวเก่าไม่มีวันขึ้น/ลง → เว้นว่าง (ไม่ backfill)
+        unload_date:     editingTrip.unload_date ?? '',
       });
     } else {
       reset({
@@ -138,6 +147,7 @@ export default function TripForm({
         fuel_cost: 0, fuel_litres: 0, other_item: '', other_cost: 0,
         withdraw: 0, remarks: '', receipt_image_url: null,
         plate: drivers.find(d => d.id === selectedDriverId)?.license_plate || '',
+        load_date: '', unload_date: '',
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -249,6 +259,8 @@ export default function TripForm({
     origin:      data.origin.trim()      || '-',
     destination: data.destination.trim() || '-',
     plate:       data.plate.trim(), // ว่าง → หน้าเที่ยวบันทึกเป็น null
+    load_date:   data.load_date.trim(),   // ว่าง → null
+    unload_date: data.unload_date.trim(), // ว่าง → null
   });
 
   const onSubmit = async (data: TripSchema) => {
@@ -326,6 +338,26 @@ export default function TripForm({
           <label className="form-label">วันที่</label>
           <input type="date" {...register('date')} className="form-input" />
           {errors.date && <p className="text-red-500 text-xs mt-1">{errors.date.message}</p>}
+        </div>
+
+        {/* วันที่ขึ้นของ / วันที่ลงของ (ไม่บังคับ) — จอ < 640px เรียงลงคนละแถว ช่องสูง 44px */}
+        <div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="trip-load-date" className="form-label">วันที่ขึ้นของ</label>
+              <input id="trip-load-date" type="date" {...register('load_date')} className="form-input min-h-11" />
+            </div>
+            <div>
+              <label htmlFor="trip-unload-date" className="form-label">วันที่ลงของ</label>
+              <input id="trip-unload-date" type="date" {...register('unload_date')}
+                min={watch('load_date') || undefined}
+                aria-invalid={!!errors.unload_date}
+                className={`form-input min-h-11 ${errors.unload_date ? 'border-red-400' : ''}`} />
+            </div>
+          </div>
+          {errors.unload_date
+            ? <p role="alert" className="text-red-600 text-xs mt-1">{errors.unload_date.message}</p>
+            : <p className="text-xs text-slate-500 mt-1">ไม่บังคับ — เว้นว่างได้ ใช้ค้นย้อนหลังด้วยตัวกรองวันที่ขึ้น/ลง</p>}
         </div>
 
         {/* คนขับ */}
