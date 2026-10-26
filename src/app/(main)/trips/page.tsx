@@ -9,7 +9,7 @@ import {
   Truck, Users, Calendar, Download, Upload as UploadIcon,
   Building2, TrendingUp, Fuel, DollarSign, Settings,
   FileUp, AlertCircle, CheckCircle2, X, Loader2,
-  Receipt, Plus, Filter, Trash2,
+  Receipt, Plus, Filter, Trash2, ImageDown,
 } from 'lucide-react';
 import type { Driver, Trip, TripFormData, AppSettings, MonthFilter } from '@/types';
 import {
@@ -24,6 +24,7 @@ import {
 import { todayBangkok, nextMonthStart } from '@/lib/dateTh';
 import { fetchAllRows } from '@/lib/fetchAll';
 import { sumTripPay, baseForMonth, isCountedDriver } from '@/lib/payrollCalc';
+import { exportTripsPng, pngPageCount, PNG_MAX_PAGES, PNG_ROWS_PER_PAGE } from '@/lib/tripsPng';
 
 // แปลง error จาก Supabase เป็นข้อความไทยที่ผู้ใช้อ่านเข้าใจ
 function friendlySaveError(err: { message?: string; code?: string }): string {
@@ -376,6 +377,42 @@ export default function TripsPage() {
     a.click();
   };
 
+  // ── PNG Export (ข้อมูลชุดเดียวกับตาราง/CSV: tableTrips + tableTotals) ──
+  const [pngBusy, setPngBusy] = useState(false);
+  const [pngMsg,  setPngMsg]  = useState('');
+  const tableLoading = rangeApplied ? rangeLoading : loading;
+  useEffect(() => { setPngMsg(''); }, [selectedDriverId, monthYm, rangeApplied]); // ข้อความเก่าไม่ค้างเมื่อเปลี่ยนชุดข้อมูล
+
+  const handleExportPNG = async () => {
+    if (pngBusy || tableLoading) return;
+    if (tableTrips.length === 0) {
+      setPngMsg(`ไม่มีรายการให้ส่งออกใน${rangeApplied ? rangeText : monthLabel} — เลือกเดือนหรือช่วงวันที่ที่มีเที่ยวก่อน`);
+      return;
+    }
+    const pages = pngPageCount(tableTrips.length);
+    if (pages > PNG_MAX_PAGES) {
+      setPngMsg(`มี ${formatNumber(tableTrips.length)} รายการ มากเกินไปสำหรับรูปภาพ (สูงสุด ${PNG_MAX_PAGES * PNG_ROWS_PER_PAGE} รายการ) — กรองช่วงวันที่ให้แคบลง หรือใช้ Export CSV`);
+      return;
+    }
+    if (pages > 1 && !window.confirm(`มี ${tableTrips.length} รายการ จะได้ ${pages} รูป (รูปละ ${PNG_ROWS_PER_PAGE} รายการ) ดาวน์โหลดต่อไหม?`)) return;
+    setPngBusy(true); setPngMsg('');
+    try {
+      const fileBase = rangeApplied
+        ? `รายการ_${selectedDriver?.nickname}_${rangeApplied.field === 'load_date' ? 'ขึ้น' : 'ลง'}_${rangeApplied.from || 'ต้นสุด'}_${rangeApplied.to || 'ล่าสุด'}`
+        : `รายการ_${selectedDriver?.nickname}_${getThaiMonthLabel(monthFilter)}`;
+      await exportTripsPng(tableTrips, tableTotals, {
+        companyName: COMPANY.name,
+        driverName:  selectedDriver ? `${selectedDriver.name} (${selectedDriver.nickname})` : '',
+        plate:       selectedDriver?.license_plate || '',
+        periodText:  rangeApplied ? rangeText : getThaiMonthLabel(monthFilter),
+      }, fileBase);
+    } catch (e) {
+      setPngMsg(`สร้างรูปไม่สำเร็จ: ${e instanceof Error ? e.message : 'ไม่ทราบสาเหตุ'} — ลองใหม่ หรือกรองให้รายการน้อยลง`);
+    } finally {
+      setPngBusy(false);
+    }
+  };
+
   // ── Import CSV ────────────────────────────────────────────
   const [showImport, setShowImport]       = useState(false);
   const [importRows, setImportRows]       = useState<ImportRow[]>([]);
@@ -709,15 +746,29 @@ export default function TripsPage() {
               >(แก้ไข)</button>
             </div>
           </div>
-          <div className="flex gap-2 flex-shrink-0">
+          <div className="flex flex-wrap gap-2 flex-shrink-0">
             <button onClick={handleExportCSV} className="btn-secondary text-sm py-1.5">
               <Download className="w-4 h-4" /> Export
+            </button>
+            <button onClick={handleExportPNG} disabled={pngBusy || tableLoading} aria-busy={pngBusy}
+              className="btn-secondary text-sm py-1.5 min-h-11 disabled:opacity-60 disabled:cursor-not-allowed">
+              {pngBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageDown className="w-4 h-4" />}
+              {pngBusy ? 'กำลังสร้างรูป…' : 'Export PNG'}
             </button>
             <button onClick={() => fileInputRef.current?.click()} className="btn-primary text-sm py-1.5">
               <FileUp className="w-4 h-4" /> Import
             </button>
             <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleFileChange} />
           </div>
+          {pngMsg && (
+            <p role="status" className="w-full text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span className="flex-1">{pngMsg}</span>
+              <button type="button" onClick={() => setPngMsg('')} aria-label="ปิดข้อความ" className="min-h-11 min-w-11 -my-3 -mr-2 flex items-center justify-center text-amber-700">
+                <X className="w-4 h-4" />
+              </button>
+            </p>
+          )}
         </div>
 
         {/* Driver KPI Cards */}
