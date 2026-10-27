@@ -71,7 +71,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const finalSalaryWords = numberToThaiWords(final_salary) + 'บาทถ้วน';
   const compensationWords = compensation > 0 ? numberToThaiWords(compensation) + 'บาทถ้วน' : '';
 
-  const mainText = `โดยหนังสือฉบับนี้ ข้าพเจ้าขอให้การแจ้งว่า ${driver_name} ลูกจ้างของ หจก.ณสิริทรัพย์ การเกษตร ${reason}${lastWorkDate ? ` ตั้งแต่วันที่ ${thaiDate(lastWorkDate)}` : ''} ทางบริษัทจึงได้เลิกจ้างลูกจ้าง มีผลตั้งแต่วันที่ ${thaiDate(termDate)} โดยลูกจ้างได้รับค่าตอบแทนในเดือนสุดท้ายเป็นเงิน ${formatMoney(final_salary)} บาท (${finalSalaryWords})${compensation > 0 ? ` และได้รับเงินชดเชย ${formatMoney(compensation)} บาท (${compensationWords})` : ''}${notes ? ` ${notes}` : ''}`;
+  const mainText = `โดยหนังสือฉบับนี้ ข้าพเจ้าขอให้การแจ้งว่า ${driver_name} ลูกจ้างของ หจก.ณสิริทรัพย์ ${reason}${lastWorkDate ? ` ตั้งแต่วันที่ ${thaiDate(lastWorkDate)}` : ''} ทางบริษัทจึงได้เลิกจ้างลูกจ้าง มีผลตั้งแต่วันที่ ${thaiDate(termDate)} โดยลูกจ้างได้รับค่าตอบแทนในเดือนสุดท้ายเป็นเงิน ${formatMoney(final_salary)} บาท (${finalSalaryWords})${compensation > 0 ? ` และได้รับเงินชดเชย ${formatMoney(compensation)} บาท (${compensationWords})` : ''}${notes ? ` ${notes}` : ''}`;
 
   const doc = new Document({
     styles: { default: { document: { run: { font: 'Sarabun', size: 28 } } } },

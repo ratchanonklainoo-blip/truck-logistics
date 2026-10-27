@@ -502,7 +502,7 @@ export default function ReportsPage() {
             <div className="pa-header-left">
               <div className="pa-logo-box">ณ</div>
               <div>
-                <div className="pa-title">หจก.ณสิริทรัพย์ การเกษตร</div>
+                <div className="pa-title">หจก.ณสิริทรัพย์</div>
                 <div className="pa-subtitle">61 หมู่ 2 ต.ท่าข้าวเหลือก อ.แม่จัน จ.เชียงราย</div>
               </div>
             </div>
@@ -680,7 +680,7 @@ export default function ReportsPage() {
 
           {/* ── Footer ── */}
           <div className="pa-footer">
-            <span>หจก.ณสิริทรัพย์ การเกษตร — ระบบ Truck Logistics OS</span>
+            <span>หจก.ณสิริทรัพย์ — ระบบ Truck Logistics OS</span>
             <span>เอกสารนี้ออกโดยระบบอัตโนมัติ ไม่ต้องลงลายมือชื่อ</span>
           </div>
 

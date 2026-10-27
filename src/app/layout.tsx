@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'ณสิริทรัพย์ Logistics OS',
-  description: 'ระบบจัดการรถพ่วง หจก.ณสิริทรัพย์ การเกษตร',
+  description: 'ระบบจัดการรถพ่วง หจก.ณสิริทรัพย์',
 };
 
 export default function RootLayout({
